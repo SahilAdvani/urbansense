@@ -448,6 +448,48 @@ The system shall:
 
 ---
 
+# 8. Product Modules
+
+UrbanSense is organized into seven core product modules that together form a complete urban air quality intelligence and decision-support workflow. Each module addresses a specific stage of the pollution management lifecycle, enabling city administrators to move seamlessly from pollution detection to informed intervention and public communication.
+
+The platform follows a modular architecture, allowing each module to evolve independently while sharing data and intelligence through a common backend infrastructure.
+
+## Core Product Modules
+
+| Module | Purpose |
+|----------|---------|
+| AI Command Dashboard | Provides a city-wide overview of air quality, weather conditions, active alerts, key environmental metrics, and operational insights. |
+| Interactive City Map | Displays ward boundaries, AQI heatmaps, pollution hotspots, monitoring stations, and critical infrastructure on an interactive geospatial interface. |
+| Ward Intelligence Panel | Presents detailed environmental intelligence for a selected ward, including AQI trends, weather conditions, nearby sensitive locations, historical data, and AI-generated insights. |
+| Pollution Analytics Engine | Analyzes environmental data to identify pollution hotspots, estimate probable pollution sources, detect trends, and generate explainable analytical insights. |
+| AQI Forecasting Center | Predicts short-term air quality conditions, estimates forecast confidence, and highlights potential pollution risks before they occur. |
+| Recommendation & Intervention Center | Generates AI-powered intervention recommendations, allows administrators to record implemented actions, and tracks post-intervention environmental trends. |
+| Communication & Reporting Center | Generates localized citizen health advisories, public awareness messages, administrative reports, and decision-support documentation. |
+
+## Supporting Platform Capabilities
+
+In addition to the core product modules, UrbanSense includes several supporting platform capabilities that enable secure, reliable, and scalable operation of the system.
+
+These capabilities include:
+
+- Administrator Authentication
+- Role-Based Access Control
+- System Configuration
+- External Data Source Management
+- Audit Logs
+- User Preferences
+- Platform Monitoring
+
+These capabilities support the operation of the platform but are not part of the primary environmental intelligence workflow.
+
+## Modular Design Philosophy
+
+Each module is designed to operate as an independent functional unit while sharing data through common platform services. This modular approach improves maintainability, scalability, and future extensibility, allowing new capabilities to be added without affecting existing functionality.
+
+Detailed workflows, software behavior, APIs, database design, and implementation details for each module are specified in the Technical Design Document (TDD).
+
+---
+
 # 9. Success Metrics
 
 The success of UrbanSense will be evaluated based on its ability to assist city administrators in making faster, smarter, and evidence-based environmental decisions.
