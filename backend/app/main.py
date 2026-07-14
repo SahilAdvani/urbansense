@@ -1,11 +1,21 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.database.session import Base, engine
+import app.database.models as models
+from app.modules.auth.router import router as auth_router
+
+# Create database tables
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
+
+# Register routers
+app.include_router(auth_router, prefix=settings.API_V1_STR)
+
 
 # Set all CORS enabled origins
 if settings.BACKEND_CORS_ORIGINS:
