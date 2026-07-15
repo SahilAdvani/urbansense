@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 import jwt
+import uuid
 from typing import Optional
 
 from app.database.session import get_db
@@ -21,7 +22,7 @@ class Token(BaseModel):
     token_type: str
 
 class UserResponse(BaseModel):
-    id: str
+    id: uuid.UUID
     email: str
     role: str
 

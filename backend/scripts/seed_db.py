@@ -1,6 +1,5 @@
 import sys
 import os
-import hashlib
 from datetime import datetime, timedelta
 import random
 
@@ -9,9 +8,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database.session import SessionLocal, Base, engine
 from app.database.models import User, Ward, AQIStation, AQIObservation, Intervention, CitizenAdvisory, AIRecommendation
-
-def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+from app.shared.security import hash_password
 
 # Mock Wards with simple bounding box GeoJSONs
 MOCK_WARDS = [

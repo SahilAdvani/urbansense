@@ -11,6 +11,9 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.2",
+    "@types/react-router-dom": "^5.3.3",
+    "axios": "^1.18.1",
+    "framer-motion": "^12.42.2",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.24.0",
     "react": "^19.2.7",
