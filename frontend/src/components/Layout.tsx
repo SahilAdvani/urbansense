@@ -1,12 +1,21 @@
-import React from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Wind, Map, BarChart3, ShieldAlert, LogOut, User } from "lucide-react";
+import { Wind, Map, BarChart3, ShieldAlert, LogOut, User, Search, Plus, MapPin, Loader2 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
+import { useCity } from "../hooks/useCity";
 
 export const Layout: React.FC = () => {
   const { user, logout } = useAuth();
+  const { activeCity, cities, selectCity, registerCity } = useCity();
+  
   const location = useLocation();
   const navigate = useNavigate();
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [registering, setRegistering] = useState(false);
+  
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const handleLogout = () => {
     logout();
@@ -19,21 +28,126 @@ export const Layout: React.FC = () => {
     { label: "AI Recommendations", path: "/recommendations", icon: ShieldAlert },
   ];
 
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filteredCities = cities.filter(city => 
+    city.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleCitySelect = (cityId: string) => {
+    selectCity(cityId);
+    setDropdownOpen(false);
+    setSearchQuery("");
+  };
+
+  const handleRegisterCity = async () => {
+    if (!searchQuery.trim()) return;
+    setRegistering(true);
+    try {
+      const newCity = await registerCity(searchQuery);
+      handleCitySelect(newCity.id);
+    } catch (e) {
+      alert("Failed to resolve city coordinates in India. Try another city name.");
+    } finally {
+      setRegistering(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased">
       {/* Premium Header */}
       <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="bg-violet-600 p-2 rounded-xl text-white shadow-lg shadow-violet-500/30">
-            <Wind size={24} />
+        {/* Brand & City Dropdown */}
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3">
+            <div className="bg-violet-600 p-2 rounded-xl text-white shadow-lg shadow-violet-500/30">
+              <Wind size={24} />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-white leading-none">
+                UrbanSense
+              </h1>
+              <span className="text-xs text-violet-400 font-medium">
+                Decision Support Portal
+              </span>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-white leading-none">
-              UrbanSense
-            </h1>
-            <span className="text-xs text-violet-400 font-medium">
-              Smart City AQI Intelligence
-            </span>
+
+          {/* Interactive City Selector */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setDropdownOpen(!dropdownOpen)}
+              className="flex items-center gap-2 bg-slate-800/60 border border-slate-700 hover:border-violet-500/40 text-slate-200 hover:text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer min-w-[140px] justify-between"
+            >
+              <div className="flex items-center gap-1.5">
+                <MapPin size={14} className="text-violet-400" />
+                <span>{activeCity ? activeCity.name : "Select City"}</span>
+              </div>
+              <span className="text-[10px] text-slate-400 ml-1">▼</span>
+            </button>
+
+            {dropdownOpen && (
+              <div className="absolute left-0 mt-2 w-64 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl z-50 p-2 flex flex-col gap-2">
+                <div className="relative flex items-center">
+                  <Search size={14} className="absolute left-3 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Search or register city..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-violet-600"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && filteredCities.length === 0) {
+                        handleRegisterCity();
+                      }
+                    }}
+                  />
+                </div>
+
+                <div className="max-h-48 overflow-y-auto space-y-0.5">
+                  {filteredCities.map((city) => (
+                    <button
+                      key={city.id}
+                      onClick={() => handleCitySelect(city.id)}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-between cursor-pointer ${
+                        activeCity?.id === city.id
+                          ? "bg-violet-600/20 text-violet-400 font-semibold"
+                          : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                      }`}
+                    >
+                      <span>{city.name}</span>
+                      <span className="text-[9px] text-slate-500 font-mono">
+                        {city.has_wards ? "Level 2" : "Level 1"}
+                      </span>
+                    </button>
+                  ))}
+
+                  {filteredCities.length === 0 && searchQuery && (
+                    <button
+                      onClick={handleRegisterCity}
+                      disabled={registering}
+                      className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold bg-violet-600/10 text-violet-400 hover:bg-violet-600/20 transition-all border border-violet-500/20 cursor-pointer"
+                    >
+                      {registering ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <Plus size={12} />
+                      )}
+                      {registering ? "Registering..." : `Register "${searchQuery}"`}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

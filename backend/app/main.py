@@ -6,6 +6,7 @@ import app.database.models as models
 from app.modules.auth.router import router as auth_router
 from app.modules.wards.router import router as wards_router
 from app.modules.recommendations.router import router as recommendations_router
+from app.modules.cities.router import router as cities_router
 
 # Create database tables on startup (idempotent)
 Base.metadata.create_all(bind=engine)
@@ -33,6 +34,8 @@ if settings.BACKEND_CORS_ORIGINS:
 app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(wards_router, prefix=settings.API_V1_STR)
 app.include_router(recommendations_router, prefix=settings.API_V1_STR)
+app.include_router(cities_router, prefix=settings.API_V1_STR)
+
 
 
 @app.get("/")

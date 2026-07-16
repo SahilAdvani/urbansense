@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Text, UUID
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Text, UUID, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.session import Base
@@ -13,19 +13,33 @@ class User(Base):
     role = Column(String(50), default="municipal_admin")  # super_admin, municipal_admin, pollution_officer
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+class City(Base):
+    __tablename__ = "cities"
+    
+    id = Column(String(100), primary_key=True, index=True)  # e.g., "delhi", "mumbai"
+    name = Column(String(100), nullable=False)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    has_wards = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    wards = relationship("Ward", back_populates="city", cascade="all, delete-orphan")
+
 class Ward(Base):
     __tablename__ = "wards"
     
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), unique=True, nullable=False, index=True)
+    city_id = Column(String(100), ForeignKey("cities.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(100), nullable=False, index=True)
     geojson_boundary = Column(JSON, nullable=True)  # Store Polygon coordinates or full GeoJSON Feature
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
-    stations = relationship("AQIStation", back_populates="ward")
-    observations = relationship("AQIObservation", back_populates="ward")
-    interventions = relationship("Intervention", back_populates="ward")
-    advisories = relationship("CitizenAdvisory", back_populates="ward")
-    recommendations = relationship("AIRecommendation", back_populates="ward")
+    city = relationship("City", back_populates="wards")
+    stations = relationship("AQIStation", back_populates="ward", cascade="all, delete-orphan")
+    observations = relationship("AQIObservation", back_populates="ward", cascade="all, delete-orphan")
+    interventions = relationship("Intervention", back_populates="ward", cascade="all, delete-orphan")
+    advisories = relationship("CitizenAdvisory", back_populates="ward", cascade="all, delete-orphan")
+    recommendations = relationship("AIRecommendation", back_populates="ward", cascade="all, delete-orphan")
 
 class AQIStation(Base):
     __tablename__ = "aqi_stations"
@@ -38,7 +52,7 @@ class AQIStation(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     ward = relationship("Ward", back_populates="stations")
-    observations = relationship("AQIObservation", back_populates="station")
+    observations = relationship("AQIObservation", back_populates="station", cascade="all, delete-orphan")
 
 class AQIObservation(Base):
     __tablename__ = "aqi_observations"

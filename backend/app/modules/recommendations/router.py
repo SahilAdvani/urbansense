@@ -5,7 +5,7 @@ from typing import Optional, List, Any
 from datetime import datetime
 
 from app.database.session import get_db
-from app.database.models import AIRecommendation
+from app.database.models import AIRecommendation, Ward
 
 router = APIRouter(prefix="/recommendations", tags=["ai-recommendations"])
 
@@ -30,15 +30,19 @@ class AIRecommendationResponse(BaseModel):
 def list_recommendations(
     status: Optional[str] = None,
     ward_id: Optional[int] = None,
+    city_id: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    """List AI recommendations, optionally filtered by status or ward."""
+    """List AI recommendations, optionally filtered by status, ward, or city."""
     query = db.query(AIRecommendation)
     if status:
         query = query.filter(AIRecommendation.status == status)
     if ward_id:
         query = query.filter(AIRecommendation.ward_id == ward_id)
+    if city_id:
+        query = query.join(Ward).filter(Ward.city_id == city_id)
     return query.order_by(AIRecommendation.timestamp.desc()).all()
+
 
 
 @router.get("/{rec_id}", response_model=AIRecommendationResponse)

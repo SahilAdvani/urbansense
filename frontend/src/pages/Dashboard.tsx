@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, ShieldAlert, Thermometer, Wind, RefreshCw, ChevronRight } from "lucide-react";
 import api from "../utils/api";
+import { useCity } from "../hooks/useCity";
 
 interface Ward {
   id: number;
@@ -14,6 +15,7 @@ interface WardWithStat extends Ward {
 }
 
 export const Dashboard = () => {
+  const { activeCity } = useCity();
   const [wards, setWards] = useState<WardWithStat[]>([]);
   const [cityAvg, setCityAvg] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -28,9 +30,12 @@ export const Dashboard = () => {
     return { label: "Very Poor", color: "text-rose-400 bg-rose-500/10 border-rose-500/20" };
   };
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
+    if (!activeCity) return;
     try {
-      const wardsRes = await api.get<Ward[]>("/wards");
+      const wardsRes = await api.get<Ward[]>("/wards", {
+        params: { city_id: activeCity.id }
+      });
       const wardsList = wardsRes.data;
 
       const wardsWithStats = await Promise.all(
@@ -56,6 +61,8 @@ export const Dashboard = () => {
       if (validAqis.length > 0) {
         const avg = Math.round(validAqis.reduce((sum, val) => sum + val, 0) / validAqis.length);
         setCityAvg(avg);
+      } else {
+        setCityAvg(null);
       }
       setError(null);
     } catch (err) {
@@ -65,11 +72,13 @@ export const Dashboard = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [activeCity]);
 
   useEffect(() => {
+    setLoading(true);
     fetchDashboardData();
-  }, []);
+  }, [activeCity, fetchDashboardData]);
+
 
   const handleRefresh = () => {
     setRefreshing(true);

@@ -20,15 +20,22 @@ const statusColor: Record<string, string> = {
   dismissed: "text-slate-400 bg-slate-400/10 border-slate-400/20",
 };
 
+import { useCity } from "../hooks/useCity";
+
 export const AIRecommendations: React.FC = () => {
+  const { activeCity } = useCity();
   const [recs, setRecs] = useState<AIRec[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!activeCity) return;
     const fetchRecs = async () => {
+      setLoading(true);
       try {
-        const response = await api.get<AIRec[]>("/recommendations");
+        const response = await api.get<AIRec[]>("/recommendations", {
+          params: { city_id: activeCity.id }
+        });
         setRecs(response.data);
       } catch (err) {
         console.error("Failed to fetch AI recommendations", err);
@@ -38,7 +45,8 @@ export const AIRecommendations: React.FC = () => {
       }
     };
     fetchRecs();
-  }, []);
+  }, [activeCity]);
+
 
   return (
     <div className="min-h-screen bg-slate-950 text-white p-6">

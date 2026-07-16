@@ -15,9 +15,12 @@ class WardResponse(BaseModel):
     name: str
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    geojson_boundary: Optional[dict] = None
+    aqi: Optional[int] = None
 
     class Config:
         from_attributes = True
+
 
 
 class WardDetailResponse(BaseModel):
@@ -50,14 +53,35 @@ def _get_ward_centroid(ward: Ward) -> tuple[Optional[float], Optional[float]]:
 
 
 @router.get("/", response_model=List[WardResponse])
-def list_wards(db: Session = Depends(get_db)):
-    """Return all wards with approximate centroid coordinates."""
-    wards = db.query(Ward).all()
+def list_wards(city_id: Optional[str] = None, db: Session = Depends(get_db)):
+    """Return all wards with approximate centroid coordinates and average AQI."""
+    query = db.query(Ward)
+    if city_id:
+        query = query.filter(Ward.city_id == city_id)
+    wards = query.all()
     result = []
     for ward in wards:
         lat, lon = _get_ward_centroid(ward)
-        result.append(WardResponse(id=ward.id, name=ward.name, latitude=lat, longitude=lon))
+        if lat is None or lon is None:
+            lat = ward.city.latitude
+            lon = ward.city.longitude
+        
+        # Calculate current average AQI for the ward
+        obs_vals = db.query(AQIObservation.aqi).filter(AQIObservation.ward_id == ward.id).all()
+        aqi_val = int(sum(o[0] for o in obs_vals) / len(obs_vals)) if obs_vals else None
+        
+        result.append(WardResponse(
+            id=ward.id, 
+            name=ward.name, 
+            latitude=lat, 
+            longitude=lon,
+            geojson_boundary=ward.geojson_boundary,
+            aqi=aqi_val
+        ))
     return result
+
+
+
 
 
 @router.get("/{ward_id}", response_model=WardDetailResponse)
