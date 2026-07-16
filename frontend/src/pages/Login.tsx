@@ -96,6 +96,21 @@ export const Login = () => {
             )}
           </button>
         </form>
+
+        {/* Demo Credentials Info Box */}
+        <div className="mt-6 p-4 rounded-xl bg-violet-500/5 border border-violet-500/10 flex flex-col gap-1.5">
+          <span className="text-[10px] font-bold text-violet-400 uppercase tracking-widest">
+            Demo Access Credentials
+          </span>
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-slate-400">Email:</span>
+            <span className="font-mono text-slate-200">admin@urbansense.gov</span>
+          </div>
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-slate-400">Password:</span>
+            <span className="font-mono text-slate-200">admin123</span>
+          </div>
+        </div>
       </div>
     </div>
   );
