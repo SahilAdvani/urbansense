@@ -70,16 +70,23 @@ Once a city is selected, the platform dynamically loads:
 
 No page reload is required. The dashboard updates dynamically based on the selected city.
 
+### Dynamic City Registration & Geocoding Workflow
+
+To avoid pre-seeding thousands of cities manually, the platform dynamically resolves and registers new cities when searched:
+
+1. **Search & Database Check**: When a user searches for an Indian city, the backend first checks the local database.
+2. **Geocoding Resolution**: If not found locally, the backend calls the OpenWeatherMap Geocoding API (or OpenStreetMap Nominatim) to fetch the coordinates (latitude, longitude) of the requested city in India.
+3. **Database Insertion**: The new city is dynamically registered in the database `cities` table, marking it as `Level 1` (has_wards = false).
+4. **Data Initialization**: The backend automatically initializes a simulated monitoring station and loads current weather and AQI observations for the new coordinates.
+5. **Dashboard Render**: The frontend receives the newly registered city object and displays the operational dashboard.
+
 ### Progressive Intelligence Strategy
 
 UrbanSense supports two levels of intelligence.
 
 #### Level 1 – City-Level Intelligence
-
-Available for every supported city.
-
+Available dynamically for **every** searched city in India via geocoding.
 Features include:
-
 - AQI dashboard
 - Weather information
 - AQI forecasting
@@ -88,11 +95,8 @@ Features include:
 - Citizen advisories
 
 #### Level 2 – Ward-Level Intelligence
-
-Available only when detailed geospatial datasets exist.
-
+Available only for pre-configured cities with detailed geospatial datasets (e.g., Delhi, Mumbai, Bengaluru, Hyderabad, Chennai, Ahmedabad).
 Additional capabilities include:
-
 - Ward boundaries
 - Heatmaps
 - Pollution hotspot analysis
