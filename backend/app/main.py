@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import asyncio
+
 from app.core.config import settings
 from app.database.session import Base, engine
 import app.database.models as models
@@ -7,6 +9,7 @@ from app.modules.auth.router import router as auth_router
 from app.modules.wards.router import router as wards_router
 from app.modules.recommendations.router import router as recommendations_router
 from app.modules.cities.router import router as cities_router
+from app.shared.background_tasks import start_background_tasks
 
 # Create database tables on startup (idempotent)
 Base.metadata.create_all(bind=engine)
@@ -19,6 +22,12 @@ app = FastAPI(
     docs_url=f"{settings.API_V1_STR}/docs",
     redoc_url=f"{settings.API_V1_STR}/redoc",
 )
+
+@app.on_event("startup")
+async def startup_event():
+    # Spawn the background sync loop task asynchronously
+    asyncio.create_task(start_background_tasks())
+
 
 # CORS middleware — allow frontend dev server and any configured origins
 if settings.BACKEND_CORS_ORIGINS:

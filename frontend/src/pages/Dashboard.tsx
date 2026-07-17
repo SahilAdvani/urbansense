@@ -80,10 +80,20 @@ export const Dashboard = () => {
   }, [activeCity, fetchDashboardData]);
 
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
+    if (!activeCity) return;
     setRefreshing(true);
-    fetchDashboardData();
+    try {
+      await api.post(`/cities/${activeCity.id}/sync`);
+      await fetchDashboardData();
+    } catch (err: any) {
+      console.error("Sync failed:", err);
+      alert(err?.response?.data?.detail ?? "Failed to sync live sensor metrics from OpenWeatherMap.");
+    } finally {
+      setRefreshing(false);
+    }
   };
+
 
   if (loading) {
     return (

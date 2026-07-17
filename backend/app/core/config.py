@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     
     # Gemini API Configuration
     GEMINI_API_KEY: str = ""
+
+    # OpenWeatherMap API Configuration
+    OPENWEATHER_API_KEY: str = ""
+
     
     # CORS Configuration
     BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
