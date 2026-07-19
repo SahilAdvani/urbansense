@@ -15,7 +15,7 @@ interface WardWithStat extends Ward {
 }
 
 export const Dashboard = () => {
-  const { activeCity } = useCity();
+  const { activeCity, fetchCities } = useCity();
   const [wards, setWards] = useState<WardWithStat[]>([]);
   const [cityAvg, setCityAvg] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,6 +74,22 @@ export const Dashboard = () => {
     }
   }, [activeCity]);
 
+  // Short poll city status while is_syncing is true (asynchronous background loader)
+  useEffect(() => {
+    if (!activeCity || !activeCity.is_syncing) return;
+
+    const interval = setInterval(async () => {
+      try {
+        await fetchCities(activeCity.id);
+        await fetchDashboardData();
+      } catch (err) {
+        console.error("Polling sync status failed:", err);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [activeCity?.is_syncing, activeCity?.id, fetchCities, fetchDashboardData]);
+
   useEffect(() => {
     setLoading(true);
     fetchDashboardData();
@@ -85,7 +101,8 @@ export const Dashboard = () => {
     setRefreshing(true);
     try {
       await api.post(`/cities/${activeCity.id}/sync`);
-      await fetchDashboardData();
+      // Update local city state immediately to show progress
+      await fetchCities(activeCity.id);
     } catch (err: any) {
       console.error("Sync failed:", err);
       alert(err?.response?.data?.detail ?? "Failed to sync live sensor metrics from OpenWeatherMap.");
@@ -127,6 +144,16 @@ export const Dashboard = () => {
       {error && (
         <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
           {error}
+        </div>
+      )}
+
+      {activeCity?.is_syncing && (
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-xs font-semibold">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-violet-500"></span>
+          </span>
+          Synchronizing local sensors... Real-time suburb coordinates are updating asynchronously.
         </div>
       )}
 
@@ -210,34 +237,47 @@ export const Dashboard = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {wards.map((ward) => {
-              const currentStatus = getAqiStatus(ward.aqi);
-              return (
-                <Link
-                  key={ward.id}
-                  to={`/ward/${ward.id}`}
-                  className="flex items-center justify-between p-4 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-violet-500/40 hover:bg-slate-900/40 transition-all group"
-                >
-                  <div className="flex flex-col gap-1">
-                    <span className="text-sm font-semibold text-slate-200 group-hover:text-violet-400 transition-colors">
-                      {ward.name.split(" - ")[1] || ward.name}
-                    </span>
-                    <span className="text-[10px] text-slate-500 font-medium">
-                      {ward.name.split(" - ")[0]}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex flex-col items-end">
-                      <span className="text-base font-bold text-slate-200">{ward.aqi} AQI</span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full border mt-1 ${currentStatus.color}`}>
-                        {currentStatus.label}
+            {[...wards]
+              .sort((a, b) => b.aqi - a.aqi)
+              .slice(0, 6)
+              .map((ward) => {
+                const currentStatus = getAqiStatus(ward.aqi);
+                return (
+                  <Link
+                    key={ward.id}
+                    to={`/ward/${ward.id}`}
+                    className="flex items-center justify-between p-4 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-violet-500/40 hover:bg-slate-900/40 transition-all group"
+                  >
+                    <div className="flex flex-col gap-1">
+                      <span className="text-sm font-semibold text-slate-200 group-hover:text-violet-400 transition-colors">
+                        {ward.name.split(" - ")[1] || ward.name}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-medium">
+                        {ward.name.split(" - ")[0]}
                       </span>
                     </div>
-                    <ChevronRight size={16} className="text-slate-600 group-hover:text-violet-400 transition-colors" />
-                  </div>
-                </Link>
-              );
-            })}
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-col items-end">
+                        <span className="text-base font-bold text-slate-200">{ward.aqi} AQI</span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full border mt-1 ${currentStatus.color}`}>
+                          {currentStatus.label}
+                        </span>
+                      </div>
+                      <ChevronRight size={16} className="text-slate-600 group-hover:text-violet-400 transition-colors" />
+                    </div>
+                  </Link>
+                );
+              })}
+          </div>
+
+          <div className="flex justify-center border-t border-slate-800/60 pt-4 mt-2">
+            <Link
+              to="/wards-directory"
+              className="inline-flex items-center gap-1.5 text-xs text-violet-400 hover:text-white font-bold tracking-wide transition-colors"
+            >
+              View All {wards.length} Wards & Sectors
+              <ChevronRight size={14} />
+            </Link>
           </div>
         </div>
 

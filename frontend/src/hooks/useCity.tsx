@@ -7,6 +7,7 @@ export interface City {
   latitude: number;
   longitude: number;
   has_wards: boolean;
+  is_syncing: boolean;
 }
 
 interface CityContextType {
@@ -16,6 +17,7 @@ interface CityContextType {
   error: string | null;
   selectCity: (cityId: string) => void;
   registerCity: (cityName: string) => Promise<City>;
+  fetchCities: (selectId?: string) => Promise<void>;
 }
 
 const CityContext = createContext<CityContextType | undefined>(undefined);
@@ -84,6 +86,7 @@ export const CityProvider: React.FC<{ children: React.ReactNode }> = ({ children
         error,
         selectCity,
         registerCity,
+        fetchCities,
       }}
     >
       {children}

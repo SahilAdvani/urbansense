@@ -1,18 +1,10 @@
-import React, { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup, GeoJSON, useMap } from "react-leaflet";
+import React, { useEffect, useState, useRef } from "react";
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useNavigate } from "react-router-dom";
 import api from "../utils/api";
 import { useCity } from "../hooks/useCity";
-
-// Fix default marker icons for Leaflet in Vite/Webpack bundling
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: new URL("leaflet/dist/images/marker-icon-2x.png", import.meta.url).href,
-  iconUrl: new URL("leaflet/dist/images/marker-icon.png", import.meta.url).href,
-  shadowUrl: new URL("leaflet/dist/images/marker-shadow.png", import.meta.url).href,
-});
 
 interface Ward {
   id: number;
@@ -29,6 +21,94 @@ const ChangeMapView: React.FC<{ center: [number, number] }> = ({ center }) => {
   useEffect(() => {
     map.setView(center, 12);
   }, [center, map]);
+  return null;
+};
+
+// Canvas-based Heatmap Overlay for smooth gradient maps (AccuWeather/Google style)
+const HeatmapOverlay: React.FC<{ points: { lat: number; lng: number; intensity: number }[] }> = ({ points }) => {
+  const map = useMap();
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const pane = map.getPane("overlayPane");
+    if (!pane) return;
+
+    // Create a high-performance transparent Canvas overlay
+    const canvas = document.createElement("canvas");
+    canvas.style.position = "absolute";
+    canvas.style.top = "0";
+    canvas.style.left = "0";
+    canvas.style.pointerEvents = "none";
+    canvas.style.opacity = "0.6";
+    pane.appendChild(canvas);
+    canvasRef.current = canvas;
+
+    const draw = () => {
+      const size = map.getSize();
+      canvas.width = size.x;
+      canvas.height = size.y;
+      
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Reposition canvas relative to current map movement bounds
+      const topLeft = map.containerPointToLayerPoint([0, 0]);
+      L.DomUtil.setPosition(canvas, topLeft);
+
+      points.forEach(point => {
+        if (point.lat === null || point.lng === null) return;
+        const latlng = L.latLng(point.lat, point.lng);
+        const containerPoint = map.latLngToContainerPoint(latlng);
+        
+        // Define a smooth radial glow based on the AQI level
+        // Radius of pollution dispersion scales slightly with intensity
+        const radius = Math.min(130, Math.max(50, point.intensity * 0.45));
+        const gradient = ctx.createRadialGradient(
+          containerPoint.x, containerPoint.y, 0,
+          containerPoint.x, containerPoint.y, radius
+        );
+
+        // Map AQI values to RGB coordinates
+        let rgbColor = "16, 185, 129"; // Green
+        if (point.intensity > 300) {
+          rgbColor = "244, 63, 94"; // Rose/Hazardous
+        } else if (point.intensity > 200) {
+          rgbColor = "168, 85, 247"; // Purple/Very Poor
+        } else if (point.intensity > 150) {
+          rgbColor = "239, 68, 68"; // Red/Poor
+        } else if (point.intensity > 100) {
+          rgbColor = "249, 115, 22"; // Orange/Moderate
+        } else if (point.intensity > 50) {
+          rgbColor = "20, 184, 166"; // Teal/Satisfactory
+        }
+
+        gradient.addColorStop(0, `rgba(${rgbColor}, 0.85)`);
+        gradient.addColorStop(0.35, `rgba(${rgbColor}, 0.45)`);
+        gradient.addColorStop(1, `rgba(${rgbColor}, 0)`);
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(containerPoint.x, containerPoint.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    };
+
+    draw();
+
+    // Re-draw canvas dynamically when users zoom, pan, or resize the map
+    map.on("move", draw);
+    map.on("resize", draw);
+
+    return () => {
+      map.off("move", draw);
+      map.off("resize", draw);
+      if (canvas.parentNode) {
+        canvas.parentNode.removeChild(canvas);
+      }
+    };
+  }, [map, points]);
+
   return null;
 };
 
@@ -67,9 +147,26 @@ export const MapView: React.FC = () => {
   const getAqiColor = (aqi: number) => {
     if (aqi <= 50) return "#10b981"; // Good (Green)
     if (aqi <= 100) return "#14b8a6"; // Satisfactory (Teal)
-    if (aqi <= 200) return "#f59e0b"; // Moderate (Yellow)
-    if (aqi <= 300) return "#f97316"; // Poor (Orange)
-    return "#f43f5e"; // Very Poor (Red)
+    if (aqi <= 150) return "#eab308"; // Moderate (Yellow)
+    if (aqi <= 200) return "#f97316"; // Poor (Orange)
+    if (aqi <= 300) return "#a855f7"; // Very Poor (Purple)
+    return "#f43f5e"; // Severe (Rose)
+  };
+
+  // Generate beautiful pulsing markers for monitoring stations
+  const createPulsingIcon = (aqi: number) => {
+    const color = getAqiColor(aqi);
+    return L.divIcon({
+      html: `
+        <div class="relative flex items-center justify-center w-6 h-6">
+          <span class="animate-ping absolute inline-flex h-5 w-5 rounded-full opacity-60" style="background-color: ${color}"></span>
+          <span class="relative inline-flex rounded-full h-3.5 w-3.5 border-2 border-slate-900 shadow-md" style="background-color: ${color}"></span>
+        </div>
+      `,
+      className: "custom-glowing-marker",
+      iconSize: [24, 24],
+      iconAnchor: [12, 12]
+    });
   };
 
   const defaultCenter: [number, number] = [28.6139, 77.2090]; // Delhi
@@ -77,13 +174,20 @@ export const MapView: React.FC = () => {
     ? [activeCity.latitude, activeCity.longitude]
     : defaultCenter;
 
+  // Map suburb elements to points payload for our Canvas heatmap
+  const heatmapPoints = wards.map(w => ({
+    lat: w.latitude,
+    lng: w.longitude,
+    intensity: w.aqi
+  }));
+
   return (
-    <div className="h-[calc(100vh-140px)] w-full bg-slate-950 flex flex-col rounded-2xl overflow-hidden border border-slate-900">
+    <div className="h-[calc(100vh-140px)] w-full bg-slate-950 flex flex-col rounded-2xl overflow-hidden border border-slate-900 shadow-2xl">
       <div className="px-6 py-4 border-b border-slate-900 bg-slate-900/60 backdrop-blur-md flex justify-between items-center shrink-0">
         <div>
-          <h1 className="text-xl font-bold text-white">Geospatial Intelligence Map</h1>
+          <h1 className="text-xl font-bold text-white tracking-tight">Geospatial Intelligence Map</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            {activeCity ? `${activeCity.name} – ` : ""}Ward-level pollution heatmaps and monitoring stations
+            {activeCity ? `${activeCity.name} – ` : ""}Continuous monitoring heatmap and local station details
           </p>
         </div>
         
@@ -92,15 +196,16 @@ export const MapView: React.FC = () => {
           <span className="text-slate-500 uppercase tracking-wider mr-1">AQI Level:</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>&lt;50</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-teal-500"></span>51-100</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>101-200</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>201-300</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>101-150</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>151-200</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>201-300</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>300+</span>
         </div>
       </div>
 
       {loading && (
         <div className="flex-grow flex items-center justify-center text-slate-400">
-          Loading map data…
+          Loading map assets…
         </div>
       )}
 
@@ -120,67 +225,38 @@ export const MapView: React.FC = () => {
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
             
-            {/* Layer 2: Ward Boundaries Heatmap (when available) */}
-            {activeCity?.has_wards && wards.map((ward) => {
-              if (!ward.geojson_boundary) return null;
-              
-              const color = getAqiColor(ward.aqi);
-              const pathOptions = {
-                fillColor: color,
-                fillOpacity: 0.5,
-                color: "#1e293b",
-                weight: 1.5,
-              };
+            {/* Layer 1: Smooth Canvas Heatmap Overlay */}
+            {activeCity?.has_wards && <HeatmapOverlay points={heatmapPoints} />}
 
-              return (
-                <GeoJSON
-                  key={ward.id}
-                  data={ward.geojson_boundary}
-                  style={pathOptions}
-                  eventHandlers={{
-                    click: () => handleMarkerClick(ward.id),
-                    mouseover: (e) => {
-                      const layer = e.target;
-                      layer.setStyle({ fillOpacity: 0.7, weight: 2.5 });
-                    },
-                    mouseout: (e) => {
-                      const layer = e.target;
-                      layer.setStyle({ fillOpacity: 0.5, weight: 1.5 });
-                    }
-                  }}
-                >
-                  <Popup>
-                    <div className="text-slate-900 font-semibold p-1">
-                      <p className="text-sm font-bold">{ward.name}</p>
-                      <p className="text-xs mt-1">Average AQI: <span className="font-bold">{ward.aqi}</span></p>
-                      <p className="text-[10px] text-violet-600 mt-2 font-bold cursor-pointer hover:underline">
-                        Click to view analytics →
-                      </p>
-                    </div>
-                  </Popup>
-                </GeoJSON>
-              );
-            })}
-
-            {/* Layer 1: Central City Marker (always shown for context/monitoring station) */}
+            {/* Layer 2: Interactive Glowing Suburb Stations */}
             {wards.map((ward) => {
-              // Only render standard markers when polygons are not present (Level 1) or on the ward centroid
-              if (activeCity?.has_wards && ward.geojson_boundary) return null;
               if (ward.latitude === null || ward.longitude === null) return null;
               
+              const cleanSuburbName = ward.name.includes(" - ") 
+                ? ward.name.split(" - ")[1] 
+                : ward.name;
+
               return (
                 <Marker
                   key={ward.id}
-
                   position={[ward.latitude, ward.longitude]}
+                  icon={createPulsingIcon(ward.aqi)}
                   eventHandlers={{ click: () => handleMarkerClick(ward.id) }}
                 >
+                  <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
+                    <div className="text-slate-900 font-semibold text-xs p-0.5">
+                      <p className="font-bold">{cleanSuburbName}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">AQI: <span className="font-bold text-slate-800">{ward.aqi}</span> • Click for details</p>
+                    </div>
+                  </Tooltip>
                   <Popup>
                     <div className="text-slate-900 font-semibold p-1">
-                      <p className="text-sm font-bold">{ward.name}</p>
-                      <p className="text-xs mt-1">Average AQI: <span className="font-bold">{ward.aqi}</span></p>
+                      <p className="text-sm font-extrabold">{cleanSuburbName}</p>
+                      <p className="text-xs mt-1">
+                        Average AQI: <span className="font-bold text-slate-950">{ward.aqi}</span>
+                      </p>
                       <p className="text-[10px] text-violet-600 mt-2 font-bold cursor-pointer hover:underline">
-                        Click to view analytics →
+                        Click to view localized analytics →
                       </p>
                     </div>
                   </Popup>
@@ -195,7 +271,7 @@ export const MapView: React.FC = () => {
               <div>
                 <h4 className="text-sm font-bold text-white">City-Level Intelligence Mode</h4>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Detailed geospatial ward boundaries are not yet seeded for {activeCity?.name}. Displaying regional monitoring sensors.
+                  Detailed local suburb sensors are not yet mapped for {activeCity?.name}. Displaying regional monitoring metrics.
                 </p>
               </div>
               <span className="text-[10px] font-bold bg-violet-600/20 text-violet-400 px-2 py-1 rounded border border-violet-500/20 uppercase tracking-wider">

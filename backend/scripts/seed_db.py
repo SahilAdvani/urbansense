@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 from datetime import datetime, timedelta
 import random
 
@@ -7,7 +8,7 @@ import random
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database.session import SessionLocal, Base, engine
-from app.database.models import User, City, Ward, AQIStation, AQIObservation, Intervention, CitizenAdvisory, AIRecommendation
+from app.database.models import User, City, Ward, AQIStation, AQIObservation, AIRecommendation
 from app.shared.security import hash_password
 from app.core.config import settings
 from app.shared.weather_service import (
@@ -15,6 +16,7 @@ from app.shared.weather_service import (
     get_real_weather,
     calculate_indian_aqi,
 )
+from app.shared.osm_service import fetch_city_suburbs, generate_suburb_geojson
 
 CITIES_TO_SEED = [
     # Level 2 Cities (Ward-level intelligence enabled)
@@ -32,28 +34,6 @@ CITIES_TO_SEED = [
     {"id": "surat", "name": "Surat", "lat": 21.1702, "lon": 72.8311, "has_wards": False},
     {"id": "patna", "name": "Patna", "lat": 25.5941, "lon": 85.1376, "has_wards": False},
 ]
-
-def make_dynamic_geojson(idx: int, lat: float, lon: float):
-    # Generates a valid rectangle centered offset from lat, lon
-    offset_x = ((idx - 1) % 2 - 0.5) * 0.05
-    offset_y = ((idx - 1) // 2 - 0.5) * 0.05
-    c_lat = lat + offset_y
-    c_lon = lon + offset_x
-    coords = [
-        [c_lon - 0.02, c_lat - 0.02],
-        [c_lon + 0.02, c_lat - 0.02],
-        [c_lon + 0.02, c_lat + 0.02],
-        [c_lon - 0.02, c_lat + 0.02],
-        [c_lon - 0.02, c_lat - 0.02]
-    ]
-    return {
-        "type": "Feature",
-        "properties": {"name": f"Zone {idx}"},
-        "geometry": {
-            "type": "Polygon",
-            "coordinates": [coords]
-        }
-    }
 
 def seed():
     db = SessionLocal()
@@ -92,218 +72,155 @@ def seed():
             )
             db.add(city)
             db.commit()
-            print(f"Seeded City: {city.name} ({'Level 2' if city.has_wards else 'Level 1'})")
+            print(f"\n--- Seeding City: {city.name} ({'Level 2' if city.has_wards else 'Level 1'}) ---")
 
-            # Seed Wards
+            # Resolve suburbs via OSM Overpass
+            suburbs = []
             if city.has_wards:
-                wards = []
-                for i in range(1, 5):
-                    w_name = f"{city.name} - Ward {i}"
-                    ward = Ward(
-                        city_id=city.id,
-                        name=w_name,
-                        geojson_boundary=make_dynamic_geojson(i, city.latitude, city.longitude)
-                    )
-                    db.add(ward)
-                    db.commit()
-                    db.refresh(ward)
-                    wards.append(ward)
-                    
-                    # Seed 1 Station per ward
-                    w_lat = city.latitude + ((i - 1) // 2 - 0.5) * 0.05 + 0.005
-                    w_lon = city.longitude + ((i - 1) % 2 - 0.5) * 0.05 + 0.005
-                    station = AQIStation(
-                        name=f"Monitoring Station - Ward {i}",
-                        ward_id=ward.id,
-                        latitude=w_lat,
-                        longitude=w_lon
-                    )
-                    db.add(station)
-                    db.commit()
-                    db.refresh(station)
-
-                    # Seed 24 hours of observations
-                    real_seeded = False
-                    if api_key:
-                        weather = get_real_weather(w_lat, w_lon, api_key)
-                        temp = weather.get("main", {}).get("temp", 25.0) if weather else 25.0
-                        humidity = weather.get("main", {}).get("humidity", 60.0) if weather else 60.0
-                        w_speed = weather.get("wind", {}).get("speed", 4.0) if weather else 4.0
-                        w_deg = weather.get("wind", {}).get("deg", 180.0) if weather else 180.0
-
-                        end_time = int(datetime.utcnow().timestamp())
-                        start_time = end_time - (24 * 3600)
-                        history = get_historical_air_pollution(w_lat, w_lon, start_time, end_time, api_key)
-
-                        if history:
-                            for item in history:
-                                timestamp = datetime.utcfromtimestamp(item["dt"])
-                                comps = item.get("components", {})
-                                pm25 = comps.get("pm2_5", 0.0)
-                                pm10 = comps.get("pm10", 0.0)
-                                no2 = comps.get("no2", 0.0)
-                                co = comps.get("co", 0.0) / 1000.0  # mg/m3
-                                so2 = comps.get("so2", 0.0)
-                                o3 = comps.get("o3", 0.0)
-
-                                calculated_aqi = calculate_indian_aqi(pm25, pm10, no2, co, so2, o3)
-                                obs = AQIObservation(
-                                    station_id=station.id,
-                                    ward_id=ward.id,
-                                    timestamp=timestamp,
-                                    aqi=calculated_aqi,
-                                    pm25=pm25,
-                                    pm10=pm10,
-                                    no2=no2,
-                                    co=co,
-                                    so2=so2,
-                                    o3=o3,
-                                    temperature=temp + random.uniform(-1, 1),
-                                    humidity=humidity + random.uniform(-3, 3),
-                                    wind_speed=w_speed + random.uniform(-0.5, 0.5),
-                                    wind_direction=w_deg + random.uniform(-10, 10)
-                                )
-                                db.add(obs)
-                            db.commit()
-                            real_seeded = True
-
-                    if not real_seeded:
-                        now = datetime.utcnow()
-                        base_aqi = 60 if i == 3 else (210 if i == 2 else 130)  # Make ward 2 a hotspot, ward 3 very clean
-                        for h in range(24):
-                            obs_aqi = max(20, base_aqi + random.randint(-15, 15))
-                            obs = AQIObservation(
-                                station_id=station.id,
-                                ward_id=ward.id,
-                                timestamp=now - timedelta(hours=h),
-                                aqi=obs_aqi,
-                                pm25=obs_aqi * 0.6 + random.uniform(-4, 4),
-                                pm10=obs_aqi * 1.2 + random.uniform(-8, 8),
-                                no2=random.uniform(15, 55),
-                                co=random.uniform(0.1, 1.1),
-                                so2=random.uniform(4, 14),
-                                o3=random.uniform(8, 38),
-                                temperature=26.0 + random.uniform(-2, 2),
-                                humidity=62.0 + random.uniform(-6, 6),
-                                wind_speed=random.uniform(2.0, 10.0),
-                                wind_direction=random.uniform(0, 360)
-                            )
-                            db.add(obs)
-                        db.commit()
-
-                    # Seed dynamic pending AI recommendations for high AQI wards
-                    # Check AQI averages
-                    obs_vals = db.query(AQIObservation.aqi).filter(AQIObservation.ward_id == ward.id).all()
-                    avg_aqi = int(sum(o[0] for o in obs_vals) / len(obs_vals)) if obs_vals else 100
-                    if avg_aqi > 150:
-                        rec = AIRecommendation(
-                            ward_id=ward.id,
-                            trigger_aqi=avg_aqi,
-                            primary_pollutant="PM2.5",
-                            estimated_source="Traffic Exhaust & Industrial Emissions",
-                            confidence_score=0.92,
-                            recommendation_text=f"Enforce high-density vehicle restrictions and halt major commercial construction operations in {ward.name}.",
-                            action_plan={
-                                "steps": [
-                                    "Deploy mechanical sweepers and vacuum vehicles",
-                                    "Establish construction inspection checkpoints",
-                                    "Advise senior citizens to stay indoors"
-                                ]
-                            },
-                            status="pending"
-                        )
-                        db.add(rec)
-                        db.commit()
+                print(f"Fetching real suburbs for {city.name} from OpenStreetMap...")
+                time.sleep(2.0)  # Throttling delay to avoid Overpass rate limit timeouts
+                suburbs = fetch_city_suburbs(city.latitude, city.longitude, limit=6)
+                if not suburbs:
+                    print(f"No suburbs resolved for {city.name}. Generating fallbacks.")
+                    # Fallback suburbs if Overpass call fails
+                    suburbs = [
+                        {"name": f"{city.name} North", "latitude": city.latitude + 0.02, "longitude": city.longitude},
+                        {"name": f"{city.name} South", "latitude": city.latitude - 0.02, "longitude": city.longitude},
+                        {"name": f"{city.name} East", "latitude": city.latitude, "longitude": city.longitude + 0.02},
+                        {"name": f"{city.name} West", "latitude": city.latitude, "longitude": city.longitude - 0.02},
+                    ]
             else:
-                # Level 1 Cities: just seed 1 generic Ward + 1 Station to hold citywide measurements
+                # Level 1 has only a single central ward representing the citywide average
+                suburbs = [{"name": "City Center", "latitude": city.latitude, "longitude": city.longitude}]
+
+            # Fetch OWM data exactly ONCE per city (city center) to prevent rate limits
+            history = None
+            temp = 25.0
+            humidity = 60.0
+            w_speed = 4.0
+            w_deg = 180.0
+
+            if api_key:
+                time.sleep(1.0)  # Throttling delay between cities
+                weather = get_real_weather(city.latitude, city.longitude, api_key)
+                if weather:
+                    temp = weather.get("main", {}).get("temp", 25.0)
+                    humidity = weather.get("main", {}).get("humidity", 60.0)
+                    w_speed = weather.get("wind", {}).get("speed", 4.0)
+                    w_deg = weather.get("wind", {}).get("deg", 180.0)
+
+                end_time = int(datetime.utcnow().timestamp())
+                start_time = end_time - (24 * 3600)
+                history = get_historical_air_pollution(city.latitude, city.longitude, start_time, end_time, api_key)
+
+            # Ingest wards and observations
+            for idx, sub in enumerate(suburbs):
+                sub_name = sub["name"]
+                sub_lat = sub["latitude"]
+                sub_lon = sub["longitude"]
+
                 ward = Ward(
                     city_id=city.id,
-                    name=f"{city.name} Center",
-                    geojson_boundary=None
+                    name=f"{city.name} - {sub_name}" if city.has_wards else f"{city.name} Center",
+                    geojson_boundary=generate_suburb_geojson(sub_lat, sub_lon, sub_name) if city.has_wards else None
                 )
                 db.add(ward)
                 db.commit()
                 db.refresh(ward)
 
                 station = AQIStation(
-                    name=f"{city.name} City Station",
+                    name=f"Monitoring Station - {sub_name}" if city.has_wards else f"{city.name} City Station",
                     ward_id=ward.id,
-                    latitude=city.latitude,
-                    longitude=city.longitude
+                    latitude=sub_lat,
+                    longitude=sub_lon
                 )
                 db.add(station)
                 db.commit()
                 db.refresh(station)
 
                 real_seeded = False
-                if api_key:
-                    weather = get_real_weather(city.latitude, city.longitude, api_key)
-                    temp = weather.get("main", {}).get("temp", 27.0) if weather else 27.0
-                    humidity = weather.get("main", {}).get("humidity", 58.0) if weather else 58.0
-                    w_speed = weather.get("wind", {}).get("speed", 4.0) if weather else 4.0
-                    w_deg = weather.get("wind", {}).get("deg", 180.0) if weather else 180.0
+                if history:
+                    # Distribute central values with suburb offsets
+                    offset_multiplier = 1.0 + ((idx % 3 - 1) * 0.12)  # -12%, 0%, +12% variation
+                    for item in history:
+                        timestamp = datetime.utcfromtimestamp(item["dt"])
+                        comps = item.get("components", {})
+                        pm25 = comps.get("pm2_5", 0.0) * offset_multiplier
+                        pm10 = comps.get("pm10", 0.0) * offset_multiplier
+                        no2 = comps.get("no2", 0.0) * offset_multiplier
+                        co = (comps.get("co", 0.0) / 1000.0) * offset_multiplier  # mg/m3
+                        so2 = comps.get("so2", 0.0) * offset_multiplier
+                        o3 = comps.get("o3", 0.0) * offset_multiplier
 
-                    end_time = int(datetime.utcnow().timestamp())
-                    start_time = end_time - (24 * 3600)
-                    history = get_historical_air_pollution(city.latitude, city.longitude, start_time, end_time, api_key)
-
-                    if history:
-                        for item in history:
-                            timestamp = datetime.utcfromtimestamp(item["dt"])
-                            comps = item.get("components", {})
-                            pm25 = comps.get("pm2_5", 0.0)
-                            pm10 = comps.get("pm10", 0.0)
-                            no2 = comps.get("no2", 0.0)
-                            co = comps.get("co", 0.0) / 1000.0  # mg/m3
-                            so2 = comps.get("so2", 0.0)
-                            o3 = comps.get("o3", 0.0)
-
-                            calculated_aqi = calculate_indian_aqi(pm25, pm10, no2, co, so2, o3)
-                            obs = AQIObservation(
-                                station_id=station.id,
-                                ward_id=ward.id,
-                                timestamp=timestamp,
-                                aqi=calculated_aqi,
-                                pm25=pm25,
-                                pm10=pm10,
-                                no2=no2,
-                                co=co,
-                                so2=so2,
-                                o3=o3,
-                                temperature=temp + random.uniform(-1, 1),
-                                humidity=humidity + random.uniform(-3, 3),
-                                wind_speed=w_speed + random.uniform(-0.5, 0.5),
-                                wind_direction=w_deg + random.uniform(-10, 10)
-                            )
-                            db.add(obs)
-                        db.commit()
-                        real_seeded = True
+                        calculated_aqi = calculate_indian_aqi(pm25, pm10, no2, co, so2, o3)
+                        obs = AQIObservation(
+                            station_id=station.id,
+                            ward_id=ward.id,
+                            timestamp=timestamp,
+                            aqi=calculated_aqi,
+                            pm25=pm25,
+                            pm10=pm10,
+                            no2=no2,
+                            co=co,
+                            so2=so2,
+                            o3=o3,
+                            temperature=temp + random.uniform(-1, 1),
+                            humidity=humidity + random.uniform(-3, 3),
+                            wind_speed=w_speed + random.uniform(-0.5, 0.5),
+                            wind_direction=w_deg + random.uniform(-10, 10)
+                        )
+                        db.add(obs)
+                    db.commit()
+                    real_seeded = True
 
                 if not real_seeded:
                     now = datetime.utcnow()
-                    base_aqi = random.randint(90, 160)
+                    base_aqi = 65 if idx == 2 else (220 if idx == 1 else 135)
                     for h in range(24):
-                        obs_aqi = max(30, base_aqi + random.randint(-20, 20))
+                        obs_aqi = max(20, base_aqi + random.randint(-15, 15))
                         obs = AQIObservation(
                             station_id=station.id,
                             ward_id=ward.id,
                             timestamp=now - timedelta(hours=h),
                             aqi=obs_aqi,
-                            pm25=obs_aqi * 0.65,
-                            pm10=obs_aqi * 1.15,
-                            no2=random.uniform(10, 45),
-                            co=random.uniform(0.1, 0.9),
-                            so2=random.uniform(3, 11),
-                            o3=random.uniform(10, 35),
-                            temperature=27.0 + random.uniform(-3, 3),
-                            humidity=58.0 + random.uniform(-10, 10),
-                            wind_speed=random.uniform(4.0, 12.0),
+                            pm25=obs_aqi * 0.6 + random.uniform(-4, 4),
+                            pm10=obs_aqi * 1.2 + random.uniform(-8, 8),
+                            no2=random.uniform(15, 55),
+                            co=random.uniform(0.1, 1.1),
+                            so2=random.uniform(4, 14),
+                            o3=random.uniform(8, 38),
+                            temperature=26.0 + random.uniform(-2, 2),
+                            humidity=62.0 + random.uniform(-6, 6),
+                            wind_speed=random.uniform(2.0, 10.0),
                             wind_direction=random.uniform(0, 360)
                         )
                         db.add(obs)
                     db.commit()
 
-        print("Database Seeding Completed Successfully!")
+                # Seed dynamic pending AI recommendations for high AQI wards
+                obs_vals = db.query(AQIObservation.aqi).filter(AQIObservation.ward_id == ward.id).all()
+                avg_aqi = int(sum(o[0] for o in obs_vals) / len(obs_vals)) if obs_vals else 100
+                if avg_aqi > 150:
+                    rec = AIRecommendation(
+                        ward_id=ward.id,
+                        trigger_aqi=avg_aqi,
+                        primary_pollutant="PM2.5",
+                        estimated_source="Traffic Exhaust & Industrial Emissions",
+                        confidence_score=0.92,
+                        recommendation_text=f"Enforce high-density vehicle restrictions and halt major commercial construction operations in {ward.name}.",
+                        action_plan={
+                            "steps": [
+                                "Deploy mechanical sweepers and vacuum vehicles",
+                                "Establish construction inspection checkpoints",
+                                "Advise senior citizens to stay indoors"
+                            ]
+                        },
+                        status="pending"
+                    )
+                    db.add(rec)
+                    db.commit()
+
+        print("\nDatabase Seeding Completed Successfully with Real Suburbs!")
     except Exception as e:
         print(f"Error during seeding: {e}")
         db.rollback()

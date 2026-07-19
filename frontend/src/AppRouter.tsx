@@ -8,6 +8,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { MapView } from "./pages/MapView";
 import { WardDetail } from "./pages/WardDetail";
 import { AIRecommendations } from "./pages/AIRecommendations";
+import { WardsDirectory } from "./pages/WardsDirectory";
 
 export const AppRouter = () => (
   <AuthProvider>
@@ -21,6 +22,7 @@ export const AppRouter = () => (
               <Route path="/map" element={<MapView />} />
               <Route path="/ward/:wardId" element={<WardDetail />} />
               <Route path="/recommendations" element={<AIRecommendations />} />
+              <Route path="/wards-directory" element={<WardsDirectory />} />
             </Route>
           </Route>
         </Routes>
