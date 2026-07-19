@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     SUPABASE_URL: str = ""
     SUPABASE_KEY: str = ""
     
-    # Gemini API Configuration
-    GEMINI_API_KEY: str = ""
+    # Groq API Configuration
+    GROQ_API_KEY: str = ""
 
     # OpenWeatherMap API Configuration
     OPENWEATHER_API_KEY: str = ""

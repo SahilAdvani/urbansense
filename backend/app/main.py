@@ -9,6 +9,7 @@ from app.modules.auth.router import router as auth_router
 from app.modules.wards.router import router as wards_router
 from app.modules.recommendations.router import router as recommendations_router
 from app.modules.cities.router import router as cities_router
+from app.modules.forecasting.router import router as forecasting_router
 from app.shared.background_tasks import start_background_tasks
 
 # Create database tables on startup (idempotent)
@@ -44,6 +45,7 @@ app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(wards_router, prefix=settings.API_V1_STR)
 app.include_router(recommendations_router, prefix=settings.API_V1_STR)
 app.include_router(cities_router, prefix=settings.API_V1_STR)
+app.include_router(forecasting_router, prefix=settings.API_V1_STR)
 
 
 
