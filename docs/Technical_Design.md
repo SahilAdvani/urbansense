@@ -107,7 +107,7 @@ Business Logic    AI Intelligence    Geospatial Engine
 
 | Technology | Purpose |
 |------------|---------|
-| Gemini API | AI Explanations & Recommendations |
+| Groq API | AI Explanations & Recommendations |
 | Scikit-learn | Forecasting Models |
 | Pandas | Data Processing |
 | NumPy | Numerical Computation |
