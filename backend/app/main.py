@@ -30,15 +30,14 @@ async def startup_event():
     asyncio.create_task(start_background_tasks())
 
 
-# CORS middleware — allow frontend dev server and any configured origins
-if settings.BACKEND_CORS_ORIGINS:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+# CORS middleware — allow all origins for production compatibility
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Register API routers
 app.include_router(auth_router, prefix=settings.API_V1_STR)
