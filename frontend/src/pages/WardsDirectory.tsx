@@ -30,9 +30,9 @@ export const WardsDirectory: React.FC = () => {
     return { label: "Very Poor", color: "text-rose-400 bg-rose-500/10 border-rose-500/20" };
   };
 
-  const fetchWardsData = useCallback(async () => {
+  const fetchWardsData = useCallback(async (silent: boolean = false) => {
     if (!activeCity) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const response = await api.get<Ward[]>("/wards", {
         params: { city_id: activeCity.id }
@@ -66,9 +66,15 @@ export const WardsDirectory: React.FC = () => {
     }
   }, [activeCity]);
 
+  const [prevCityId, setPrevCityId] = useState<string | null>(null);
+
   useEffect(() => {
-    fetchWardsData();
-  }, [activeCity, fetchWardsData]);
+    const silent = activeCity?.id === prevCityId;
+    if (activeCity) {
+      setPrevCityId(activeCity.id);
+    }
+    fetchWardsData(silent);
+  }, [activeCity, fetchWardsData, prevCityId]);
 
   // Clean names (remove city prefix)
   const getCleanName = (name: string) => {

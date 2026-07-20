@@ -90,10 +90,17 @@ export const Dashboard = () => {
     return () => clearInterval(interval);
   }, [activeCity?.is_syncing, activeCity?.id, fetchCities, fetchDashboardData]);
 
+  const [prevCityId, setPrevCityId] = useState<string | null>(null);
+
   useEffect(() => {
-    setLoading(true);
+    if (activeCity) {
+      if (activeCity.id !== prevCityId) {
+        setLoading(true);
+        setPrevCityId(activeCity.id);
+      }
+    }
     fetchDashboardData();
-  }, [activeCity, fetchDashboardData]);
+  }, [activeCity, fetchDashboardData, prevCityId]);
 
 
   const handleRefresh = async () => {
