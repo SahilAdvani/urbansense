@@ -17,6 +17,7 @@ from app.shared.weather_service import (
     get_historical_air_pollution,
     get_real_weather,
     calculate_indian_aqi,
+    calibrate_pollutants,
 )
 from app.shared.osm_service import fetch_city_suburbs, generate_suburb_geojson
 
@@ -65,12 +66,13 @@ def background_ingest_city(city_id: str, lat: float, lon: float, api_key: str):
                 for item in history:
                     timestamp = datetime.utcfromtimestamp(item["dt"])
                     comps = item.get("components", {})
-                    pm25 = comps.get("pm2_5", 0.0)
-                    pm10 = comps.get("pm10", 0.0)
-                    no2 = comps.get("no2", 0.0)
-                    co = comps.get("co", 0.0) / 1000.0  # mg/m3
-                    so2 = comps.get("so2", 0.0)
-                    o3 = comps.get("o3", 0.0)
+                    calibrated = calibrate_pollutants(comps)
+                    pm25 = calibrated["pm25"]
+                    pm10 = calibrated["pm10"]
+                    no2 = calibrated["no2"]
+                    co = calibrated["co"]
+                    so2 = calibrated["so2"]
+                    o3 = calibrated["o3"]
 
                     calculated_aqi = calculate_indian_aqi(pm25, pm10, no2, co, so2, o3)
                     obs = AQIObservation(
@@ -127,12 +129,13 @@ def background_sync_city(city_id: str, api_key: str):
                 continue
 
             comps = pollution.get("components", {})
-            pm25 = comps.get("pm2_5", 0.0)
-            pm10 = comps.get("pm10", 0.0)
-            no2 = comps.get("no2", 0.0)
-            co = comps.get("co", 0.0) / 1000.0  # mg/m3
-            so2 = comps.get("so2", 0.0)
-            o3 = comps.get("o3", 0.0)
+            calibrated = calibrate_pollutants(comps)
+            pm25 = calibrated["pm25"]
+            pm10 = calibrated["pm10"]
+            no2 = calibrated["no2"]
+            co = calibrated["co"]
+            so2 = calibrated["so2"]
+            o3 = calibrated["o3"]
 
             calculated_aqi = calculate_indian_aqi(pm25, pm10, no2, co, so2, o3)
 
@@ -192,30 +195,66 @@ def register_city(
     if existing:
         return existing
 
-    # Try resolving coordinates via OSM Nominatim API
-    try:
-        query_str = urllib.parse.quote(f"{name}, India")
-        url = f"https://nominatim.openstreetmap.org/search?q={query_str}&format=json&limit=1"
-        
-        req = urllib.request.Request(
-            url, 
-            headers={"User-Agent": "UrbanSense-AQI-Decision-Support-System/1.0"}
-        )
-        
-        with urllib.request.urlopen(req, timeout=10) as response:
-            data = json.loads(response.read().decode())
-            if not data:
-                raise HTTPException(status_code=404, detail=f"City '{name}' could not be resolved in India.")
+    # Static coordinates catalog to bypass geocoder timeouts for common cities
+    INDIAN_CITIES_COORDINATES = {
+        "chandigarh": (30.7333, 76.7794),
+        "kochi": (9.9312, 76.2673),
+        "delhi": (28.6139, 77.2090),
+        "mumbai": (19.0760, 72.8777),
+        "bengaluru": (12.9716, 77.5946),
+        "hyderabad": (17.3850, 78.4867),
+        "chennai": (13.0827, 80.2707),
+        "kolkata": (22.5726, 88.3639),
+        "pune": (18.5204, 73.8567),
+        "jaipur": (26.9124, 75.7873),
+        "lucknow": (26.8467, 80.9462),
+        "surat": (21.1702, 72.8311),
+        "patna": (25.5941, 85.1376),
+        "bhopal": (23.2599, 77.4126),
+        "visakhapatnam": (17.6868, 83.2185),
+        "patiala": (30.3398, 76.3869),
+        "ludhiana": (30.9010, 75.8573),
+        "amritsar": (31.6340, 74.8723),
+        "jalandhar": (31.3260, 75.5762),
+        "shimla": (31.1048, 77.1734),
+    }
+
+    lat = None
+    lon = None
+    resolved_name = name.capitalize()
+
+    # Try resolving via catalog first
+    if city_slug in INDIAN_CITIES_COORDINATES:
+        lat, lon = INDIAN_CITIES_COORDINATES[city_slug]
+        print(f"[Geocode] Resolved {name} from static coordinates database: ({lat}, {lon})")
+
+    # If not in catalog, query OSM Nominatim API
+    if lat is None or lon is None:
+        try:
+            query_str = urllib.parse.quote(f"{name}, India")
+            url = f"https://nominatim.openstreetmap.org/search?q={query_str}&format=json&limit=1"
             
-            lat = float(data[0]["lat"])
-            lon = float(data[0]["lon"])
-            resolved_name = data[0]["display_name"].split(",")[0].strip()
-    except Exception as e:
-        print(f"Geocoding resolution failed for {name}: {e}")
-        # Fallback coordinates near Central India
+            req = urllib.request.Request(
+                url, 
+                headers={"User-Agent": "UrbanSense-App/1.0 (contact@urbansense.gov)"}
+            )
+            
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode())
+                if data:
+                    lat = float(data[0]["lat"])
+                    lon = float(data[0]["lon"])
+                    resolved_name = data[0]["display_name"].split(",")[0].strip()
+                    print(f"[Geocode] Resolved {name} from OSM Nominatim: ({lat}, {lon})")
+        except Exception as e:
+            print(f"Geocoding resolution failed for {name}: {e}")
+
+    # Fallback to central India coordinates if all else fails
+    if lat is None or lon is None:
         lat = 20.0 + random.uniform(-5.0, 5.0)
         lon = 78.0 + random.uniform(-5.0, 5.0)
         resolved_name = name.capitalize()
+        print(f"[Geocode] Using Central India fallback for {name}: ({lat}, {lon})")
 
     # Query OSM Overpass for 15 real suburbs/neighbourhoods in a 20km radius
     osm_suburbs = fetch_city_suburbs(lat, lon, limit=15)
@@ -234,13 +273,21 @@ def register_city(
         is_syncing=is_syncing
     )
     db.add(new_city)
-    db.commit()
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        existing = db.query(City).filter(City.id == city_slug).first()
+        if existing:
+            print(f"[Register] Concurrently registered city {city_slug} recovered.")
+            return existing
+        raise e
     
     # If no suburbs resolved, create a fallback city center ward
     if not osm_suburbs:
         osm_suburbs = [{"name": f"City Center - {resolved_name}", "latitude": lat, "longitude": lon}]
 
-    # Register each suburb as a ward and create a station (snappy DB transactions)
+    # Register each suburb as a ward and create a station (snappy DB transactions via in-memory flushes)
     for idx, suburb in enumerate(osm_suburbs):
         sub_name = suburb["name"]
         sub_lat = suburb["latitude"]
@@ -252,8 +299,7 @@ def register_city(
             geojson_boundary=generate_suburb_geojson(sub_lat, sub_lon, sub_name) if has_wards else None
         )
         db.add(ward)
-        db.commit()
-        db.refresh(ward)
+        db.flush()  # Allocates ID in-memory instantly
 
         station = AQIStation(
             name=f"Monitoring Station - {sub_name}" if has_wards else f"{resolved_name} City Station",
@@ -262,8 +308,7 @@ def register_city(
             longitude=sub_lon
         )
         db.add(station)
-        db.commit()
-        db.refresh(station)
+        db.flush()  # Allocates ID in-memory instantly
 
         # Pre-populate simulated fallback immediately so page is not empty on load
         now = datetime.utcnow()
@@ -287,7 +332,9 @@ def register_city(
                 wind_direction=random.uniform(0, 360)
             )
             db.add(obs)
-        db.commit()
+
+    # Perform a single database commit to flush all wards, stations, and observations to disk at once
+    db.commit()
 
     # Queue background task to backfill true coordinates from OWM
     if is_syncing and background_tasks:

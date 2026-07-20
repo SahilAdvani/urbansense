@@ -15,6 +15,7 @@ from app.shared.weather_service import (
     get_historical_air_pollution,
     get_real_weather,
     calculate_indian_aqi,
+    calibrate_pollutants,
 )
 from app.shared.osm_service import fetch_city_suburbs, generate_suburb_geojson
 
@@ -145,12 +146,13 @@ def seed():
                     for item in history:
                         timestamp = datetime.utcfromtimestamp(item["dt"])
                         comps = item.get("components", {})
-                        pm25 = comps.get("pm2_5", 0.0) * offset_multiplier
-                        pm10 = comps.get("pm10", 0.0) * offset_multiplier
-                        no2 = comps.get("no2", 0.0) * offset_multiplier
-                        co = (comps.get("co", 0.0) / 1000.0) * offset_multiplier  # mg/m3
-                        so2 = comps.get("so2", 0.0) * offset_multiplier
-                        o3 = comps.get("o3", 0.0) * offset_multiplier
+                        calibrated = calibrate_pollutants(comps)
+                        pm25 = calibrated["pm25"] * offset_multiplier
+                        pm10 = calibrated["pm10"] * offset_multiplier
+                        no2 = calibrated["no2"] * offset_multiplier
+                        co = calibrated["co"] * offset_multiplier
+                        so2 = calibrated["so2"] * offset_multiplier
+                        o3 = calibrated["o3"] * offset_multiplier
 
                         calculated_aqi = calculate_indian_aqi(pm25, pm10, no2, co, so2, o3)
                         obs = AQIObservation(

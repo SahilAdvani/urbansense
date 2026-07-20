@@ -9,6 +9,7 @@ from app.shared.weather_service import (
     get_real_air_pollution,
     get_real_weather,
     calculate_indian_aqi,
+    calibrate_pollutants,
 )
 
 async def sync_all_cities():
@@ -62,12 +63,13 @@ async def sync_all_cities():
                         continue
 
                     comps = ward_pollution.get("components", {})
-                    pm25 = comps.get("pm2_5", 0.0)
-                    pm10 = comps.get("pm10", 0.0)
-                    no2 = comps.get("no2", 0.0)
-                    co = comps.get("co", 0.0) / 1000.0  # mg/m3
-                    so2 = comps.get("so2", 0.0)
-                    o3 = comps.get("o3", 0.0)
+                    calibrated = calibrate_pollutants(comps)
+                    pm25 = calibrated["pm25"]
+                    pm10 = calibrated["pm10"]
+                    no2 = calibrated["no2"]
+                    co = calibrated["co"]
+                    so2 = calibrated["so2"]
+                    o3 = calibrated["o3"]
 
                     calculated_aqi = calculate_indian_aqi(pm25, pm10, no2, co, so2, o3)
 

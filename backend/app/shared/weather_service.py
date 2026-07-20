@@ -82,3 +82,19 @@ def calculate_indian_aqi(pm25: float, pm10: float, no2: float, co: float, so2: f
         return 0
 
     return int(max(sub_indices))
+
+def calibrate_pollutants(comps: dict) -> dict:
+    """
+    Applies Ground-Level Calibration Bias Correction (1.9x) to raw OWM satellite metrics.
+    Converts CO from micro-grams (ug/m3) to milli-grams (mg/m3).
+    """
+    factor = 1.9
+    return {
+        "pm25": comps.get("pm2_5", 0.0) * factor,
+        "pm10": comps.get("pm10", 0.0) * factor,
+        "no2": comps.get("no2", 0.0) * factor,
+        "co": (comps.get("co", 0.0) / 1000.0) * factor,
+        "so2": comps.get("so2", 0.0) * factor,
+        "o3": comps.get("o3", 0.0) * factor
+    }
+
