@@ -19,7 +19,7 @@ from app.shared.weather_service import (
     calculate_indian_aqi,
     calibrate_pollutants,
 )
-from app.shared.osm_service import fetch_city_suburbs, generate_suburb_geojson
+from app.shared.osm_service import fetch_city_suburbs, generate_suburb_geojson, fetch_city_facilities
 
 router = APIRouter(prefix="/cities", tags=["cities"])
 
@@ -372,3 +372,11 @@ def sync_city_data(city_id: str, background_tasks: BackgroundTasks, db: Session 
         "city": city.name,
         "is_syncing": True
     }
+
+@router.get("/{city_id}/facilities")
+def get_facilities(city_id: str, db: Session = Depends(get_db)):
+    """Fetch real OSM hospitals and schools in a city."""
+    city = db.query(City).filter(City.id == city_id).first()
+    if not city:
+        raise HTTPException(status_code=404, detail="City not found")
+    return fetch_city_facilities(city.latitude, city.longitude)
