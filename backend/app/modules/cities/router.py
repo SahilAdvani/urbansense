@@ -37,13 +37,27 @@ class CityResponse(BaseModel):
 # Asynchronous Background Ingestion Task for new cities
 def background_ingest_city(city_id: str, lat: float, lon: float, api_key: str):
     db = SessionLocal()
+    ward_details = []
+    city_name = ""
     try:
         city = db.query(City).filter(City.id == city_id).first()
         if not city:
             return
-        
+        city_name = city.name
         wards = db.query(Ward).filter(Ward.city_id == city.id).all()
-        
+        for w in wards:
+            station = db.query(AQIStation).filter(AQIStation.ward_id == w.id).first()
+            if station:
+                ward_details.append({
+                    "ward_id": w.id,
+                    "station_id": station.id,
+                    "lat": station.latitude,
+                    "lon": station.longitude
+                })
+    finally:
+        db.close()
+
+    try:
         # Fetch city center weather once to share baseline weather parameters
         weather = get_real_weather(lat, lon, api_key)
         temp = weather.get("main", {}).get("temp", 25.0) if weather else 25.0
@@ -52,78 +66,100 @@ def background_ingest_city(city_id: str, lat: float, lon: float, api_key: str):
         w_deg = weather.get("wind", {}).get("deg", 180.0) if weather else 180.0
         
         # Query 24h historical pollution individually for each suburb (throttled 1.2s)
-        for idx, ward in enumerate(wards):
+        for w in ward_details:
             time.sleep(1.2)  # Strictly throttle to prevent OWM rate limits
-            station = db.query(AQIStation).filter(AQIStation.ward_id == ward.id).first()
-            if not station:
-                continue
-
             end_time = int(datetime.utcnow().timestamp())
             start_time = end_time - (24 * 3600)
-            history = get_historical_air_pollution(station.latitude, station.longitude, start_time, end_time, api_key)
+            history = get_historical_air_pollution(w["lat"], w["lon"], start_time, end_time, api_key)
             
             if history:
-                for item in history:
-                    timestamp = datetime.utcfromtimestamp(item["dt"])
-                    comps = item.get("components", {})
-                    calibrated = calibrate_pollutants(comps)
-                    pm25 = calibrated["pm25"]
-                    pm10 = calibrated["pm10"]
-                    no2 = calibrated["no2"]
-                    co = calibrated["co"]
-                    so2 = calibrated["so2"]
-                    o3 = calibrated["o3"]
+                db_write = SessionLocal()
+                try:
+                    for item in history:
+                        timestamp = datetime.utcfromtimestamp(item["dt"])
+                        comps = item.get("components", {})
+                        calibrated = calibrate_pollutants(comps)
+                        pm25 = calibrated["pm25"]
+                        pm10 = calibrated["pm10"]
+                        no2 = calibrated["no2"]
+                        co = calibrated["co"]
+                        so2 = calibrated["so2"]
+                        o3 = calibrated["o3"]
 
-                    calculated_aqi = calculate_indian_aqi(pm25, pm10, no2, co, so2, o3)
-                    obs = AQIObservation(
-                        station_id=station.id,
-                        ward_id=ward.id,
-                        timestamp=timestamp,
-                        aqi=calculated_aqi,
-                        pm25=pm25,
-                        pm10=pm10,
-                        no2=no2,
-                        co=co,
-                        so2=so2,
-                        o3=o3,
-                        temperature=temp + random.uniform(-0.5, 0.5),
-                        humidity=humidity + random.uniform(-2, 2),
-                        wind_speed=w_speed + random.uniform(-0.3, 0.3),
-                        wind_direction=w_deg + random.uniform(-5, 5)
-                    )
-                    db.add(obs)
-                db.commit()
+                        calculated_aqi = calculate_indian_aqi(pm25, pm10, no2, co, so2, o3)
+                        obs = AQIObservation(
+                            station_id=w["station_id"],
+                            ward_id=w["ward_id"],
+                            timestamp=timestamp,
+                            aqi=calculated_aqi,
+                            pm25=pm25,
+                            pm10=pm10,
+                            no2=no2,
+                            co=co,
+                            so2=so2,
+                            o3=o3,
+                            temperature=temp + random.uniform(-0.5, 0.5),
+                            humidity=humidity + random.uniform(-2, 2),
+                            wind_speed=w_speed + random.uniform(-0.3, 0.3),
+                            wind_direction=w_deg + random.uniform(-5, 5)
+                        )
+                        db_write.add(obs)
+                    db_write.commit()
+                finally:
+                    db_write.close()
 
         # Update city status to completed
-        city.is_syncing = False
-        db.commit()
-        print(f"[Ingestion] Successfully backfilled true coordinates for {city.name}")
+        db_finish = SessionLocal()
+        try:
+            city = db_finish.query(City).filter(City.id == city_id).first()
+            if city:
+                city.is_syncing = False
+                db_finish.commit()
+        finally:
+            db_finish.close()
+        print(f"[Ingestion] Successfully backfilled true coordinates for {city_name}")
     except Exception as e:
         print(f"[Ingestion] Error backfilling data for {city_id}: {e}")
-        db.rollback()
-    finally:
-        db.close()
+        db_err = SessionLocal()
+        try:
+            city = db_err.query(City).filter(City.id == city_id).first()
+            if city:
+                city.is_syncing = False
+                db_err.commit()
+        finally:
+            db_err.close()
 
 # Asynchronous Background Sync Task for existing cities
 def background_sync_city(city_id: str, api_key: str):
     db = SessionLocal()
+    ward_details = []
+    city_name = ""
     try:
         city = db.query(City).filter(City.id == city_id).first()
         if not city:
             return
-        
+        city_name = city.name
         wards = db.query(Ward).filter(Ward.city_id == city.id).all()
+        for w in wards:
+            station = db.query(AQIStation).filter(AQIStation.ward_id == w.id).first()
+            if station:
+                ward_details.append({
+                    "ward_id": w.id,
+                    "station_id": station.id,
+                    "lat": station.latitude,
+                    "lon": station.longitude
+                })
+    finally:
+        db.close()
+
+    try:
         sync_timestamp = datetime.utcnow()
 
         # Query live metrics individually for each suburb (throttled 1.2s)
-        for idx, ward in enumerate(wards):
+        for w in ward_details:
             time.sleep(1.2)  # Strictly throttle to prevent OWM rate limits
-            station = db.query(AQIStation).filter(AQIStation.ward_id == ward.id).first()
-            if not station:
-                continue
-
-            weather = get_real_weather(station.latitude, station.longitude, api_key)
-            pollution = get_real_air_pollution(station.latitude, station.longitude, api_key)
+            weather = get_real_weather(w["lat"], w["lon"], api_key)
+            pollution = get_real_air_pollution(w["lat"], w["lon"], api_key)
 
             if not pollution:
                 continue
@@ -138,40 +174,54 @@ def background_sync_city(city_id: str, api_key: str):
             o3 = calibrated["o3"]
 
             calculated_aqi = calculate_indian_aqi(pm25, pm10, no2, co, so2, o3)
-
             temp = weather.get("main", {}).get("temp", 25.0) if weather else 25.0
             humidity = weather.get("main", {}).get("humidity", 60.0) if weather else 60.0
             w_speed = weather.get("wind", {}).get("speed", 4.0) if weather else 4.0
             w_deg = weather.get("wind", {}).get("deg", 180.0) if weather else 180.0
 
-            new_obs = AQIObservation(
-                station_id=station.id,
-                ward_id=ward.id,
-                timestamp=sync_timestamp,
-                aqi=calculated_aqi,
-                pm25=pm25,
-                pm10=pm10,
-                no2=no2,
-                co=co,
-                so2=so2,
-                o3=o3,
-                temperature=temp,
-                humidity=humidity,
-                wind_speed=w_speed,
-                wind_direction=w_deg
-            )
-            db.add(new_obs)
-            db.commit()
+            db_write = SessionLocal()
+            try:
+                new_obs = AQIObservation(
+                    station_id=w["station_id"],
+                    ward_id=w["ward_id"],
+                    timestamp=sync_timestamp,
+                    aqi=calculated_aqi,
+                    pm25=pm25,
+                    pm10=pm10,
+                    no2=no2,
+                    co=co,
+                    so2=so2,
+                    o3=o3,
+                    temperature=temp,
+                    humidity=humidity,
+                    wind_speed=w_speed,
+                    wind_direction=w_deg
+                )
+                db_write.add(new_obs)
+                db_write.commit()
+            finally:
+                db_write.close()
 
         # Update city status to completed
-        city.is_syncing = False
-        db.commit()
-        print(f"[Sync] Completed background sync for {city.name}")
+        db_finish = SessionLocal()
+        try:
+            city = db_finish.query(City).filter(City.id == city_id).first()
+            if city:
+                city.is_syncing = False
+                db_finish.commit()
+        finally:
+            db_finish.close()
+        print(f"[Sync] Completed background sync for {city_name}")
     except Exception as e:
-        print(f"[Sync] Error in background sync: {e}")
-        db.rollback()
-    finally:
-        db.close()
+        print(f"[Sync] Error syncing city {city_id}: {e}")
+        db_err = SessionLocal()
+        try:
+            city = db_err.query(City).filter(City.id == city_id).first()
+            if city:
+                city.is_syncing = False
+                db_err.commit()
+        finally:
+            db_err.close()
 
 @router.get("/", response_model=List[CityResponse])
 def get_cities(db: Session = Depends(get_db)):

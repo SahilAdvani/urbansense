@@ -20,65 +20,79 @@ async def sync_all_cities():
         return
 
     print(f"[Scheduler] Starting hourly synchronization at {datetime.utcnow()}")
+    
+    # 1. Fetch cities and wards using a short-lived DB session
+    city_data = []
     db = SessionLocal()
     try:
         cities = db.query(City).all()
         for city in cities:
-            try:
-                # Mark city as syncing
-                city.is_syncing = True
-                db.commit()
+            city.is_syncing = True
+            db.commit()
+            
+            wards = db.query(Ward).filter(Ward.city_id == city.id).all()
+            ward_details = []
+            for w in wards:
+                station = db.query(AQIStation).filter(AQIStation.ward_id == w.id).first()
+                if station:
+                    ward_details.append({
+                        "ward_id": w.id,
+                        "station_id": station.id,
+                        "lat": station.latitude,
+                        "lon": station.longitude
+                    })
+            city_data.append({
+                "id": city.id,
+                "name": city.name,
+                "latitude": city.latitude,
+                "longitude": city.longitude,
+                "wards": ward_details
+            })
+    except Exception as e:
+        print(f"[Scheduler] Failed to load cities meta: {e}")
+        return
+    finally:
+        db.close()
 
-                # Get all wards for the city
-                wards = db.query(Ward).filter(Ward.city_id == city.id).all()
-                if not wards:
-                    print(f"[Scheduler] No wards associated with {city.name}. Skipping.")
-                    city.is_syncing = False
-                    db.commit()
+    # 2. Iterate through cities and make slow network calls holding NO db connections
+    for city in city_data:
+        try:
+            weather = get_real_weather(city["latitude"], city["longitude"], api_key)
+            temp = weather.get("main", {}).get("temp", 25.0) if weather else 25.0
+            humidity = weather.get("main", {}).get("humidity", 60.0) if weather else 60.0
+            w_speed = weather.get("wind", {}).get("speed", 4.0) if weather else 4.0
+            w_deg = weather.get("wind", {}).get("deg", 180.0) if weather else 180.0
+
+            sync_timestamp = datetime.utcnow()
+
+            for w in city["wards"]:
+                await asyncio.sleep(1.2)  # Async sleep safely yields execution
+
+                ward_weather = get_real_weather(w["lat"], w["lon"], api_key)
+                ward_pollution = get_real_air_pollution(w["lat"], w["lon"], api_key)
+
+                if not ward_pollution:
                     continue
 
-                # Fetch city-center weather once to use as a baseline weather profile
-                weather = get_real_weather(city.latitude, city.longitude, api_key)
-                temp = weather.get("main", {}).get("temp", 25.0) if weather else 25.0
-                humidity = weather.get("main", {}).get("humidity", 60.0) if weather else 60.0
-                w_speed = weather.get("wind", {}).get("speed", 4.0) if weather else 4.0
-                w_deg = weather.get("wind", {}).get("deg", 180.0) if weather else 180.0
+                comps = ward_pollution.get("components", {})
+                calibrated = calibrate_pollutants(comps)
+                pm25 = calibrated["pm25"]
+                pm10 = calibrated["pm10"]
+                no2 = calibrated["no2"]
+                co = calibrated["co"]
+                so2 = calibrated["so2"]
+                o3 = calibrated["o3"]
 
-                sync_timestamp = datetime.utcnow()
+                calculated_aqi = calculate_indian_aqi(pm25, pm10, no2, co, so2, o3)
+                w_temp = ward_weather.get("main", {}).get("temp", temp) if ward_weather else temp
+                w_humidity = ward_weather.get("main", {}).get("humidity", humidity) if ward_weather else humidity
 
-                # Query OWM for each ward individually (throttled 1.2s delay to prevent rate limits)
-                for idx, ward in enumerate(wards):
-                    # Throttling wait (run in main event loop safely)
-                    await asyncio.sleep(1.2)
-
-                    station = db.query(AQIStation).filter(AQIStation.ward_id == ward.id).first()
-                    if not station:
-                        continue
-
-                    # Fetch live weather and pollution parameters for the ward coordinates
-                    ward_weather = get_real_weather(station.latitude, station.longitude, api_key)
-                    ward_pollution = get_real_air_pollution(station.latitude, station.longitude, api_key)
-
-                    if not ward_pollution:
-                        continue
-
-                    comps = ward_pollution.get("components", {})
-                    calibrated = calibrate_pollutants(comps)
-                    pm25 = calibrated["pm25"]
-                    pm10 = calibrated["pm10"]
-                    no2 = calibrated["no2"]
-                    co = calibrated["co"]
-                    so2 = calibrated["so2"]
-                    o3 = calibrated["o3"]
-
-                    calculated_aqi = calculate_indian_aqi(pm25, pm10, no2, co, so2, o3)
-
-                    w_temp = ward_weather.get("main", {}).get("temp", temp) if ward_weather else temp
-                    w_humidity = ward_weather.get("main", {}).get("humidity", humidity) if ward_weather else humidity
-
+                # Write observation in a fresh, short-lived session
+                db_write = SessionLocal()
+                try:
                     new_obs = AQIObservation(
-                        station_id=station.id,
-                        ward_id=ward.id,
+                        station_id=w["station_id"],
+                        ward_id=w["ward_id"],
                         timestamp=sync_timestamp,
                         aqi=calculated_aqi,
                         pm25=pm25,
@@ -92,20 +106,32 @@ async def sync_all_cities():
                         wind_speed=w_speed + random.uniform(-0.3, 0.3),
                         wind_direction=w_deg + random.uniform(-5, 5)
                     )
-                    db.add(new_obs)
-                    db.commit()
+                    db_write.add(new_obs)
+                    db_write.commit()
+                finally:
+                    db_write.close()
 
-                # Sync complete
-                city.is_syncing = False
-                db.commit()
-                print(f"[Scheduler] Successfully synced {len(wards)} wards for {city.name}.")
-            except Exception as e:
-                print(f"[Scheduler] Error syncing city {city.name}: {e}")
-                city.is_syncing = False
-                db.commit()
-                db.rollback()
-    finally:
-        db.close()
+            # Mark city as finished syncing
+            db_finish = SessionLocal()
+            try:
+                c = db_finish.query(City).filter(City.id == city["id"]).first()
+                if c:
+                    c.is_syncing = False
+                    db_finish.commit()
+            finally:
+                db_finish.close()
+            print(f"[Scheduler] Successfully synced {len(city['wards'])} wards for {city['name']}.")
+
+        except Exception as e:
+            print(f"[Scheduler] Error syncing city {city['name']}: {e}")
+            db_err = SessionLocal()
+            try:
+                c = db_err.query(City).filter(City.id == city["id"]).first()
+                if c:
+                    c.is_syncing = False
+                    db_err.commit()
+            finally:
+                db_err.close()
 
 async def start_background_tasks():
     """Background loop that runs hourly synchronization indefinitely."""
