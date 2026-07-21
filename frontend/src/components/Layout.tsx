@@ -67,7 +67,7 @@ export const Layout: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased">
       {/* Premium Header */}
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-50 px-4 md:px-6 py-3 flex items-center justify-between gap-2 overflow-x-auto">
+      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-50 px-4 md:px-6 py-3 flex items-center justify-between gap-2">
         {/* Brand & City Dropdown */}
         <div className="flex items-center gap-3 md:gap-4 shrink-0">
           <div className="flex items-center gap-2.5">
@@ -154,7 +154,7 @@ export const Layout: React.FC = () => {
         </div>
 
         {/* Navigation Tabs */}
-        <nav className="flex items-center gap-1 md:gap-1.5 shrink-0">
+        <nav className="flex items-center gap-1 md:gap-1.5 overflow-x-auto py-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;

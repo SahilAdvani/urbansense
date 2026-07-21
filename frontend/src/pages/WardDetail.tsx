@@ -67,6 +67,7 @@ export const WardDetail: React.FC = () => {
   const [activeRecs, setActiveRecs] = useState<AIRec[]>([]);
   const [advisories, setAdvisories] = useState<CitizenAdvisory[]>([]);
   const [sourceReasoning, setSourceReasoning] = useState<string>("");
+  const [loggedInterventions, setLoggedInterventions] = useState<{ id: number; title: string }[]>([]);
 
   const getCleanName = (name: string) => {
     return name.includes(" - ") ? name.split(" - ")[1] : name;
@@ -83,12 +84,13 @@ export const WardDetail: React.FC = () => {
   const fetchWardData = useCallback(async () => {
     if (!wardId) return;
     try {
-      const [wardRes, statsRes, forecastRes, recsRes, advisoriesRes] = await Promise.all([
+      const [wardRes, statsRes, forecastRes, recsRes, advisoriesRes, interventionsRes] = await Promise.all([
         api.get<WardInfo>(`/wards/${wardId}`),
         api.get<WardStat[]>(`/wards/${wardId}/stats`),
         api.get<ForecastPoint[]>(`/forecasting/${wardId}`),
         api.get<AIRec[]>("/recommendations", { params: { ward_id: wardId } }),
-        api.get<CitizenAdvisory[]>("/recommendations/advisories", { params: { ward_id: wardId } })
+        api.get<CitizenAdvisory[]>("/recommendations/advisories", { params: { ward_id: wardId } }),
+        api.get<{ id: number; title: string }[]>("/recommendations/interventions", { params: { ward_id: wardId } })
       ]);
       
       setWardName(wardRes.data.name);
@@ -96,6 +98,7 @@ export const WardDetail: React.FC = () => {
       setForecast(forecastRes.data);
       setActiveRecs(recsRes.data);
       setAdvisories(advisoriesRes.data);
+      setLoggedInterventions(interventionsRes.data);
       
       // Auto-extract source explanation if available
       if (recsRes.data.length > 0) {
@@ -333,30 +336,30 @@ export const WardDetail: React.FC = () => {
 
               {activeRecs[0].action_plan?.steps && (
                 <div className="flex flex-col gap-2.5 bg-slate-950/60 border border-slate-850 p-4.5 rounded-xl">
-                  {activeRecs[0].action_plan.steps.map((step, idx) => (
-                    <div key={idx} className="flex items-start gap-2 text-xs">
-                      <span className="text-violet-400 font-bold shrink-0">{idx + 1}.</span>
-                      <div className="flex flex-col gap-1.5 w-full">
-                        <span className="text-slate-300 leading-normal">{step}</span>
-                        {activeRecs[0].status === "pending" && (
-                          <button
-                            onClick={() => handleImplementIntervention(step, "water_sprinkling")}
-                            disabled={implementing}
-                            className="text-[9px] font-bold text-violet-400 hover:text-white transition-colors mr-auto hover:underline"
-                          >
-                            Implement Action →
-                          </button>
-                        )}
+                  {activeRecs[0].action_plan.steps.map((step, idx) => {
+                    const isExecuted = loggedInterventions.some((i) => i.title.includes(step));
+                    return (
+                      <div key={idx} className="flex items-start gap-2 text-xs border-b border-slate-900 last:border-b-0 pb-2.5 last:pb-0">
+                        <span className="text-violet-400 font-bold shrink-0">{idx + 1}.</span>
+                        <div className="flex flex-col gap-1.5 w-full">
+                          <span className="text-slate-300 leading-normal">{step}</span>
+                          {isExecuted ? (
+                            <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md w-fit">
+                              <CheckCircle2 size={12} /> Implemented
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleImplementIntervention(step, "water_sprinkling")}
+                              disabled={implementing}
+                              className="text-[9px] font-bold text-violet-400 hover:text-white transition-colors mr-auto hover:underline"
+                            >
+                              Implement Action →
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {activeRecs[0].status === "implemented" && (
-                <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 p-3.5 rounded-xl">
-                  <CheckCircle2 size={14} />
-                  Interventions Implemented
+                    );
+                  })}
                 </div>
               )}
             </div>

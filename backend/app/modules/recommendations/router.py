@@ -181,16 +181,6 @@ def create_intervention(intervention_in: InterventionCreate, db: Session = Depen
         start_time=datetime.utcnow()
     )
     db.add(new_intervention)
-
-    # If this intervention implements a recommendation, set the latest recommendation to implemented
-    rec = db.query(AIRecommendation).filter(
-        AIRecommendation.ward_id == intervention_in.ward_id,
-        AIRecommendation.status == "pending"
-    ).order_by(AIRecommendation.timestamp.desc()).first()
-    
-    if rec:
-        rec.status = "implemented"
-
     db.commit()
     db.refresh(new_intervention)
     return new_intervention
