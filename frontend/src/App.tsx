@@ -27,10 +27,10 @@ function App() {
         </div>
 
         <nav className="flex items-center gap-6">
-          <a href="#" className="text-sm font-medium text-slate-300 hover:text-violet-400 transition-colors">Dashboard</a>
-          <a href="#" className="text-sm font-medium text-slate-300 hover:text-violet-400 transition-colors">Geospatial Map</a>
-          <a href="#" className="text-sm font-medium text-slate-300 hover:text-violet-400 transition-colors">Interventions</a>
-          <a href="#" className="text-sm font-medium text-slate-300 hover:text-violet-400 transition-colors">Reports</a>
+          <a href="/" className="text-sm font-medium text-slate-300 hover:text-violet-400 transition-colors">Dashboard</a>
+          <a href="/map" className="text-sm font-medium text-slate-300 hover:text-violet-400 transition-colors">Geospatial Map</a>
+          <a href="/interventions" className="text-sm font-medium text-slate-300 hover:text-violet-400 transition-colors">Interventions</a>
+          <a href="/reports" className="text-sm font-medium text-slate-300 hover:text-violet-400 transition-colors">Reports</a>
         </nav>
 
         <div className="flex items-center gap-3">

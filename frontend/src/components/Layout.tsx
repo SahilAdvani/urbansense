@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Wind, Map, BarChart3, ShieldAlert, LogOut, User, Search, Plus, MapPin, Loader2 } from "lucide-react";
+import { Wind, Map, BarChart3, ShieldAlert, LogOut, User, Search, Plus, MapPin, Loader2, Activity, FileText } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { useCity } from "../hooks/useCity";
 
@@ -26,6 +26,8 @@ export const Layout: React.FC = () => {
     { label: "Dashboard", path: "/", icon: BarChart3 },
     { label: "Geospatial Map", path: "/map", icon: Map },
     { label: "AI Recommendations", path: "/recommendations", icon: ShieldAlert },
+    { label: "Interventions", path: "/interventions", icon: Activity },
+    { label: "Reports", path: "/reports", icon: FileText },
   ];
 
   // Close dropdown on click outside

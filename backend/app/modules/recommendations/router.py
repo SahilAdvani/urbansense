@@ -52,6 +52,21 @@ class InterventionResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class InterventionDetailResponse(BaseModel):
+    id: int
+    ward_id: int
+    ward_name: Optional[str] = None
+    city_id: Optional[str] = None
+    title: str
+    description: Optional[str] = None
+    type: str
+    status: str
+    start_time: datetime
+    end_time: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
 class InterventionCreate(BaseModel):
     ward_id: int
     title: str
@@ -179,6 +194,32 @@ def create_intervention(intervention_in: InterventionCreate, db: Session = Depen
     db.commit()
     db.refresh(new_intervention)
     return new_intervention
+
+@router.get("/interventions", response_model=List[InterventionDetailResponse])
+def list_interventions(
+    city_id: Optional[str] = None,
+    ward_id: Optional[int] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Retrieve recorded municipal interventions across wards and cities."""
+    query = db.query(Intervention).join(Ward)
+    if city_id:
+        query = query.filter(Ward.city_id == city_id)
+    if ward_id:
+        query = query.filter(Intervention.ward_id == ward_id)
+    if status:
+        query = query.filter(Intervention.status == status)
+    
+    interventions = query.order_by(Intervention.start_time.desc()).all()
+    
+    result = []
+    for item in interventions:
+        det = InterventionDetailResponse.model_validate(item)
+        det.ward_name = item.ward.name if item.ward else None
+        det.city_id = item.ward.city_id if item.ward else None
+        result.append(det)
+    return result
 
 @router.get("/advisories", response_model=List[CitizenAdvisoryResponse])
 def list_advisories(
