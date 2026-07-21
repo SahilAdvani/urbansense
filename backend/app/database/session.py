@@ -58,8 +58,8 @@ else:
         db_url,
         connect_args=connect_args,
         pool_pre_ping=True,
-        pool_size=3,
-        max_overflow=0,
+        pool_size=10,
+        max_overflow=5,
         pool_recycle=300
     )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
