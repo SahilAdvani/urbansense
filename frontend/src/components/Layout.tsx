@@ -24,8 +24,8 @@ export const Layout: React.FC = () => {
 
   const navItems = [
     { label: "Dashboard", path: "/", icon: BarChart3 },
-    { label: "Geospatial Map", path: "/map", icon: Map },
-    { label: "AI Recommendations", path: "/recommendations", icon: ShieldAlert },
+    { label: "Map", path: "/map", icon: Map },
+    { label: "AI Insights", path: "/recommendations", icon: ShieldAlert },
     { label: "Interventions", path: "/interventions", icon: Activity },
     { label: "Reports", path: "/reports", icon: FileText },
   ];
@@ -67,19 +67,19 @@ export const Layout: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased">
       {/* Premium Header */}
-      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
+      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-50 px-4 md:px-6 py-3 flex items-center justify-between gap-2 overflow-x-auto">
         {/* Brand & City Dropdown */}
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-3">
-            <div className="bg-violet-600 p-2 rounded-xl text-white shadow-lg shadow-violet-500/30">
-              <Wind size={24} />
+        <div className="flex items-center gap-3 md:gap-4 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="bg-violet-600 p-1.5 rounded-xl text-white shadow-md shadow-violet-500/30">
+              <Wind size={20} />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-white leading-none">
+              <h1 className="text-lg font-bold tracking-tight text-white leading-none">
                 UrbanSense
               </h1>
-              <span className="text-xs text-violet-400 font-medium">
-                Decision Support Portal
+              <span className="text-[10px] text-violet-400 font-medium">
+                AQI Portal
               </span>
             </div>
           </div>
@@ -88,13 +88,13 @@ export const Layout: React.FC = () => {
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setDropdownOpen(!dropdownOpen)}
-              className="flex items-center gap-2 bg-slate-800/60 border border-slate-700 hover:border-violet-500/40 text-slate-200 hover:text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer min-w-[140px] justify-between"
+              className="flex items-center gap-1.5 bg-slate-800/80 border border-slate-700 hover:border-violet-500/40 text-slate-200 hover:text-white px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer min-w-[120px] justify-between"
             >
-              <div className="flex items-center gap-1.5">
-                <MapPin size={14} className="text-violet-400" />
-                <span>{activeCity ? activeCity.name : "Select City"}</span>
+              <div className="flex items-center gap-1 text-xs truncate max-w-[90px]">
+                <MapPin size={13} className="text-violet-400 shrink-0" />
+                <span className="truncate">{activeCity ? activeCity.name : "Select City"}</span>
               </div>
-              <span className="text-[10px] text-slate-400 ml-1">▼</span>
+              <span className="text-[9px] text-slate-400 shrink-0">▼</span>
             </button>
 
             {dropdownOpen && (
@@ -154,7 +154,7 @@ export const Layout: React.FC = () => {
         </div>
 
         {/* Navigation Tabs */}
-        <nav className="flex items-center gap-2">
+        <nav className="flex items-center gap-1 md:gap-1.5 shrink-0">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
@@ -162,36 +162,34 @@ export const Layout: React.FC = () => {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl transition-all ${
+                className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-xl transition-all ${
                   isActive
-                    ? "bg-violet-600/10 text-violet-400 border border-violet-500/20"
-                    : "text-slate-300 hover:text-white hover:bg-slate-800/50 border border-transparent"
+                    ? "bg-violet-600/20 text-violet-300 border border-violet-500/30 shadow-sm"
+                    : "text-slate-300 hover:text-white hover:bg-slate-800/60 border border-transparent"
                 }`}
               >
-                <Icon size={16} />
-                {item.label}
+                <Icon size={14} />
+                <span>{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
         {/* User profile & Logout */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-slate-900/80 px-3.5 py-1.5 rounded-xl border border-slate-800">
-            <User size={14} className="text-violet-400" />
-            <span className="text-xs font-semibold text-slate-300">
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="hidden sm:flex items-center gap-1.5 bg-slate-900/90 px-2.5 py-1.5 rounded-xl border border-slate-800 text-xs">
+            <User size={13} className="text-violet-400 shrink-0" />
+            <span className="font-semibold text-slate-300 max-w-[100px] md:max-w-[130px] truncate">
               {user?.email || "Admin User"}
-            </span>
-            <span className="text-[10px] bg-violet-600/20 text-violet-400 px-1.5 py-0.5 rounded font-mono uppercase">
-              {user?.role || "Admin"}
             </span>
           </div>
           <button
             onClick={handleLogout}
             title="Log Out"
-            className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer shrink-0"
           >
-            <LogOut size={16} />
+            <LogOut size={14} />
+            <span className="hidden md:inline">Logout</span>
           </button>
         </div>
       </header>
