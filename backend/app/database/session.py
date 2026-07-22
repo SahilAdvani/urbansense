@@ -38,6 +38,10 @@ elif "sqlite" not in db_url:
         else:
             host, port = hostport, 5432
             
+        # Automatically force transaction pooling port (6543) for Supabase poolers
+        if "pooler.supabase.com" in host:
+            port = 6543
+            
         db_url = URL.create(
             drivername=scheme,
             username=username,
