@@ -4,6 +4,8 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.engine import URL
 from app.core.config import settings
 
+from sqlalchemy.pool import NullPool
+
 # If DATABASE_URL is not set, we can use an in-memory SQLite for testing/bootstrap
 db_url = settings.DATABASE_URL
 if not db_url:
@@ -57,10 +59,7 @@ else:
     engine = create_engine(
         db_url,
         connect_args=connect_args,
-        pool_pre_ping=True,
-        pool_size=10,
-        max_overflow=5,
-        pool_recycle=300
+        poolclass=NullPool
     )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
