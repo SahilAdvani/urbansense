@@ -18,10 +18,6 @@ elif "sqlite" not in db_url:
     if "pooler.supabase.com" in db_url:
         if ":5432" in db_url:
             db_url = db_url.replace(":5432", ":6543")
-        # Ensure we add pgbouncer=true for transaction pooling if not present
-        if "pgbouncer=true" not in db_url:
-            separator = "&" if "?" in db_url else "?"
-            db_url = f"{db_url}{separator}pgbouncer=true"
 
 connect_args = {}
 # Since db_url could be a URL object, we check type or str representation
