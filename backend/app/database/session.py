@@ -13,45 +13,15 @@ if not db_url:
 elif "sqlite" not in db_url:
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
-    
-    try:
-        scheme, rest = db_url.split("://", 1)
-        if "/" in rest:
-            netloc, database = rest.split("/", 1)
-        else:
-            netloc, database = rest, ""
-            
-        if "@" in netloc:
-            userpass, hostport = netloc.rsplit("@", 1)
-        else:
-            userpass, hostport = "", netloc
-            
-        if ":" in userpass:
-            username, password = userpass.split(":", 1)
-            password = urllib.parse.unquote(password)
-        else:
-            username, password = userpass, ""
-            
-        if ":" in hostport:
-            host, port = hostport.split(":", 1)
-            port = int(port)
-        else:
-            host, port = hostport, 5432
-            
-        # Automatically force transaction pooling port (6543) for Supabase poolers
-        if "pooler.supabase.com" in host:
-            port = 6543
-            
-        db_url = URL.create(
-            drivername=scheme,
-            username=username,
-            password=password,
-            host=host,
-            port=port,
-            database=database
-        )
-    except Exception as e:
-        print(f"Error parsing database URL: {e}")
+        
+    # Automatically force transaction pooling port (6543) for Supabase poolers
+    if "pooler.supabase.com" in db_url:
+        if ":5432" in db_url:
+            db_url = db_url.replace(":5432", ":6543")
+        # Ensure we add pgbouncer=true for transaction pooling if not present
+        if "pgbouncer=true" not in db_url:
+            separator = "&" if "?" in db_url else "?"
+            db_url = f"{db_url}{separator}pgbouncer=true"
 
 connect_args = {}
 # Since db_url could be a URL object, we check type or str representation
