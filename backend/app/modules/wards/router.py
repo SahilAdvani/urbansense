@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
@@ -59,6 +60,19 @@ def list_wards(city_id: Optional[str] = None, db: Session = Depends(get_db)):
     if city_id:
         query = query.filter(Ward.city_id == city_id)
     wards = query.all()
+    
+    # Calculate average AQI for all wards in a single group-by query to avoid N+1 queries
+    ward_ids = [w.id for w in wards]
+    avg_aqis = {}
+    if ward_ids:
+        averages = (
+            db.query(AQIObservation.ward_id, func.avg(AQIObservation.aqi))
+            .filter(AQIObservation.ward_id.in_(ward_ids))
+            .group_by(AQIObservation.ward_id)
+            .all()
+        )
+        avg_aqis = {r[0]: int(r[1]) for r in averages if r[1] is not None}
+        
     result = []
     for ward in wards:
         lat, lon = _get_ward_centroid(ward)
@@ -66,17 +80,13 @@ def list_wards(city_id: Optional[str] = None, db: Session = Depends(get_db)):
             lat = ward.city.latitude
             lon = ward.city.longitude
         
-        # Calculate current average AQI for the ward
-        obs_vals = db.query(AQIObservation.aqi).filter(AQIObservation.ward_id == ward.id).all()
-        aqi_val = int(sum(o[0] for o in obs_vals) / len(obs_vals)) if obs_vals else None
-        
         result.append(WardResponse(
             id=ward.id, 
             name=ward.name, 
             latitude=lat, 
             longitude=lon,
             geojson_boundary=ward.geojson_boundary,
-            aqi=aqi_val
+            aqi=avg_aqis.get(ward.id)
         ))
     return result
 
@@ -107,28 +117,38 @@ def get_ward_stats(ward_id: int, db: Session = Depends(get_db)):
     if not ward:
         raise HTTPException(status_code=404, detail="Ward not found")
 
-    observations = (
-        db.query(AQIObservation)
+    # Use database-level aggregation to prevent Out-Of-Memory (OOM) crashes on large tables
+    row = (
+        db.query(
+            func.avg(AQIObservation.aqi),
+            func.avg(AQIObservation.pm25),
+            func.avg(AQIObservation.pm10),
+            func.avg(AQIObservation.no2),
+            func.avg(AQIObservation.co),
+            func.avg(AQIObservation.so2),
+            func.avg(AQIObservation.o3),
+            func.avg(AQIObservation.temperature),
+            func.avg(AQIObservation.humidity)
+        )
         .filter(AQIObservation.ward_id == ward_id)
-        .all()
+        .first()
     )
 
-    if not observations:
+    if not row or row[0] is None:
         return []
 
-    def avg(field: str) -> float:
-        vals = [getattr(o, field) for o in observations if getattr(o, field) is not None]
-        return round(sum(vals) / len(vals), 2) if vals else 0.0
+    def clean(val):
+        return round(float(val), 2) if val is not None else 0.0
 
     stats = [
-        WardStat(metric="AQI", value=avg("aqi")),
-        WardStat(metric="PM2.5", value=avg("pm25")),
-        WardStat(metric="PM10", value=avg("pm10")),
-        WardStat(metric="NO2", value=avg("no2")),
-        WardStat(metric="CO", value=avg("co")),
-        WardStat(metric="SO2", value=avg("so2")),
-        WardStat(metric="O3", value=avg("o3")),
-        WardStat(metric="Temp (°C)", value=avg("temperature")),
-        WardStat(metric="Humidity (%)", value=avg("humidity")),
+        WardStat(metric="AQI", value=clean(row[0])),
+        WardStat(metric="PM2.5", value=clean(row[1])),
+        WardStat(metric="PM10", value=clean(row[2])),
+        WardStat(metric="NO2", value=clean(row[3])),
+        WardStat(metric="CO", value=clean(row[4])),
+        WardStat(metric="SO2", value=clean(row[5])),
+        WardStat(metric="O3", value=clean(row[6])),
+        WardStat(metric="Temp (°C)", value=clean(row[7])),
+        WardStat(metric="Humidity (%)", value=clean(row[8])),
     ]
     return stats
