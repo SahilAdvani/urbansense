@@ -7,6 +7,7 @@ import { useCity } from "../hooks/useCity";
 interface Ward {
   id: number;
   name: string;
+  aqi?: number;
 }
 
 interface WardWithStat extends Ward {
@@ -38,22 +39,14 @@ export const Dashboard = () => {
       });
       const wardsList = wardsRes.data;
 
-      const wardsWithStats = await Promise.all(
-        wardsList.map(async (w) => {
-          try {
-            const statsRes = await api.get<{ metric: string; value: number }[]>(`/wards/${w.id}/stats`);
-            const aqiStat = statsRes.data.find((s) => s.metric === "AQI");
-            const aqiValue = aqiStat ? aqiStat.value : 0;
-            return {
-              ...w,
-              aqi: aqiValue,
-              status: getAqiStatus(aqiValue).label,
-            };
-          } catch {
-            return { ...w, aqi: 0, status: "Unknown" };
-          }
-        })
-      );
+      const wardsWithStats = wardsList.map((w) => {
+        const aqiValue = w.aqi || 0;
+        return {
+          ...w,
+          aqi: aqiValue,
+          status: getAqiStatus(aqiValue).label,
+        };
+      });
 
       setWards(wardsWithStats);
 

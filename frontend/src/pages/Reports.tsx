@@ -46,23 +46,12 @@ export const Reports: React.FC = () => {
       if (!selectedCityId) return;
       setLoadingPreview(true);
       try {
-        const wardsRes = await api.get<Ward[]>("/wards", { params: { city_id: selectedCityId } });
+        const wardsRes = await api.get<any[]>("/wards", { params: { city_id: selectedCityId } });
         const wardsList = wardsRes.data;
         setWardCount(wardsList.length);
 
         if (wardsList.length > 0) {
-          const statsList = await Promise.all(
-            wardsList.map(async (w) => {
-              try {
-                const s = await api.get<{ metric: string; value: number }[]>(`/wards/${w.id}/stats`);
-                const aqiStat = s.data.find((m) => m.metric === "AQI");
-                return aqiStat ? aqiStat.value : 0;
-              } catch {
-                return 0;
-              }
-            })
-          );
-          const validAqis = statsList.filter((a) => a > 0);
+          const validAqis = wardsList.map((w) => w.aqi || 0).filter((a) => a > 0);
           if (validAqis.length > 0) {
             setCityAvgAqi(Math.round(validAqis.reduce((sum, v) => sum + v, 0) / validAqis.length));
           } else {
