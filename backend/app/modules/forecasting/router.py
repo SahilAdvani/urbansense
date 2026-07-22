@@ -65,7 +65,8 @@ def get_ward_forecast(ward_id: int, db: Session = Depends(get_db)):
     
     # Get last known observation
     last_obs = obs[-1]
-    last_aqi = last_obs.aqi
+    # Set baseline AQI to the 24-hour historical average (mean_y) to align with the displayed AQI on the UI
+    last_aqi = mean_y
     last_time = last_obs.timestamp
     
     # Get baseline meteorological metrics

@@ -17,7 +17,7 @@ class WardResponse(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     geojson_boundary: Optional[dict] = None
-    aqi: Optional[int] = None
+    aqi: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -71,7 +71,7 @@ def list_wards(city_id: Optional[str] = None, db: Session = Depends(get_db)):
             .group_by(AQIObservation.ward_id)
             .all()
         )
-        avg_aqis = {r[0]: int(r[1]) for r in averages if r[1] is not None}
+        avg_aqis = {r[0]: round(float(r[1]), 2) for r in averages if r[1] is not None}
         
     result = []
     for ward in wards:
