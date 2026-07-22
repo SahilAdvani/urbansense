@@ -46,7 +46,11 @@ def get_ward_forecast(ward_id: int, db: Session = Depends(get_db)):
     obs = sorted(obs, key=lambda x: x.timestamp)
     
     n = len(obs)
-    x = list(range(n))
+    first_time = obs[0].timestamp
+    x = []
+    for o in obs:
+        delta_hours = (o.timestamp - first_time).total_seconds() / 3600.0
+        x.append(delta_hours)
     y = [o.aqi for o in obs]
     
     mean_x = sum(x) / n
@@ -56,6 +60,8 @@ def get_ward_forecast(ward_id: int, db: Session = Depends(get_db)):
     den = sum((x[i] - mean_x) ** 2 for i in range(n))
     
     slope = num / den if den != 0 else 0.0
+    # Cap slope to prevent extreme trend lines from sparse data or gaps
+    slope = max(-5.0, min(5.0, slope))
     
     # Get last known observation
     last_obs = obs[-1]
@@ -74,8 +80,9 @@ def get_ward_forecast(ward_id: int, db: Session = Depends(get_db)):
         # Diurnal cycle simulation: higher at night/early morning, lower in afternoon
         diurnal_factor = 15 * math.sin((future_time.hour - 6) * math.pi / 12)
         
-        # Extrapolate linear trend with dampening
-        trend_factor = slope * h * 0.4
+        # Extrapolate linear trend with exponential dampening to avoid runway values
+        dampening = math.exp(-0.1 * h)
+        trend_factor = slope * h * 0.4 * dampening
         
         # Introduce weather dispersion factors
         weather_factor = (humidity - 60) * 0.15 - (wind_speed - 4.0) * 1.5
