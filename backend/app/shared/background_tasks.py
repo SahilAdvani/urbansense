@@ -57,7 +57,7 @@ async def sync_all_cities():
     # 2. Iterate through cities and make slow network calls holding NO db connections
     for city in city_data:
         try:
-            weather = get_real_weather(city["latitude"], city["longitude"], api_key)
+            weather = await asyncio.to_thread(get_real_weather, city["latitude"], city["longitude"], api_key)
             temp = weather.get("main", {}).get("temp", 25.0) if weather else 25.0
             humidity = weather.get("main", {}).get("humidity", 60.0) if weather else 60.0
             w_speed = weather.get("wind", {}).get("speed", 4.0) if weather else 4.0
@@ -68,8 +68,8 @@ async def sync_all_cities():
             for w in city["wards"]:
                 await asyncio.sleep(1.2)  # Async sleep safely yields execution
 
-                ward_weather = get_real_weather(w["lat"], w["lon"], api_key)
-                ward_pollution = get_real_air_pollution(w["lat"], w["lon"], api_key)
+                ward_weather = await asyncio.to_thread(get_real_weather, w["lat"], w["lon"], api_key)
+                ward_pollution = await asyncio.to_thread(get_real_air_pollution, w["lat"], w["lon"], api_key)
 
                 if not ward_pollution:
                     continue
